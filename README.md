@@ -1105,4 +1105,4 @@ This mode and documentation are part of the Bob AI assistant project. Refer to t
 
 **Last Updated:** 2026-06-05  
 **Version:** 1.0.0  
-**Maintained By:** DevSecOps Security Team
+**Maintained By:** Erwin Friethoff - Senior Security Architect at IBM
