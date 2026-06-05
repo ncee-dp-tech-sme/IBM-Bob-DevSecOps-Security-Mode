@@ -1,0 +1,490 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<devsecops_security_workflow>
+  <overview>
+    This workflow implements a comprehensive 5-stage DevSecOps security control model
+    designed for regulated banking environments. The approach ensures TLS/mTLS/OAuth
+    security through layered control points across the entire software delivery lifecycle,
+    from development through production runtime.
+  </overview>
+
+  <core_principles>
+    <principle name="control_based_security">
+      <description>
+        Security assurance is achieved through multiple complementary control points
+        rather than relying on a single tool or scanner.
+      </description>
+    </principle>
+    <principle name="verification_over_assumption">
+      <description>
+        Never assume security configurations are correct. Always verify through
+        multiple stages: static analysis, build-time inspection, deployment validation,
+        and runtime verification.
+      </description>
+    </principle>
+    <principle name="eliminate_hidden_risks">
+      <description>
+        Modern frameworks abstract security complexity (Spring Boot SSL bundles,
+        OAuth auto-configuration, templated infrastructure). Make these abstractions
+        visible and verifiable at each lifecycle stage.
+      </description>
+    </principle>
+    <principle name="continuous_compliance">
+      <description>
+        Security is not a one-time activity. Continuously monitor for drift,
+        certificate expiration, and cryptographic changes.
+      </description>
+    </principle>
+  </core_principles>
+
+  <five_stage_control_model>
+    <stage number="1" name="shift_left_detection">
+      <title>Shift-Left Detection: Early Identification of Security Abstractions</title>
+      <objective>
+        Identify risky security abstractions and misconfigurations during development
+        before they reach deployment.
+      </objective>
+      <when_to_execute>
+        - During local development (pre-commit hooks)
+        - In pull request validation
+        - Early CI/CD pipeline stages
+      </when_to_execute>
+      <control_activities>
+        <activity name="static_code_analysis">
+          <description>Use custom Semgrep rules to detect security abstractions</description>
+          <targets>
+            <target>Spring Boot ssl.fromBundle() usage for mTLS</target>
+            <target>OAuth login flow activation without explicit constraints</target>
+            <target>TLS configuration through external property files</target>
+            <target>Certificate and key loading patterns</target>
+          </targets>
+          <action>Flag areas requiring verification and governance review</action>
+        </activity>
+        <activity name="iac_security_scanning">
+          <description>Scan Infrastructure-as-Code for security issues</description>
+          <tools>
+            <tool>Checkov - for Terraform, CloudFormation, Kubernetes</tool>
+            <tool>KICS - for Ansible, Docker, Kubernetes</tool>
+            <tool>tfsec - for Terraform-specific security</tool>
+          </tools>
+          <targets>
+            <target>nginx configuration files for TLS hardening</target>
+            <target>Apache configuration for protocol versions</target>
+            <target>Ansible playbooks with templated certificates</target>
+            <target>Kubernetes ingress TLS settings</target>
+          </targets>
+          <detection_patterns>
+            <pattern>Missing TLS hardening directives</pattern>
+            <pattern>Weak protocol allowances (TLS 1.0, 1.1)</pattern>
+            <pattern>Templated certificate references without validation</pattern>
+            <pattern>Insecure cipher suite configurations</pattern>
+          </detection_patterns>
+        </activity>
+        <activity name="secrets_detection">
+          <description>Prevent accidental exposure of sensitive cryptographic material</description>
+          <tools>
+            <tool>git-secrets</tool>
+            <tool>TruffleHog</tool>
+            <tool>detect-secrets</tool>
+          </tools>
+          <targets>
+            <target>Private keys (.key, .pem files)</target>
+            <target>Certificates with embedded private keys</target>
+            <target>OAuth client secrets</target>
+            <target>API keys and tokens</target>
+          </targets>
+        </activity>
+      </control_activities>
+      <outputs>
+        <output>List of flagged security abstractions requiring review</output>
+        <output>IaC security findings with severity ratings</output>
+        <output>Detected secrets requiring remediation</output>
+        <output>Traceable findings for security team review</output>
+      </outputs>
+      <success_criteria>
+        <criterion>All high-severity findings addressed before merge</criterion>
+        <criterion>Security abstractions documented and approved</criterion>
+        <criterion>No secrets committed to repository</criterion>
+      </success_criteria>
+    </stage>
+
+    <stage number="2" name="cryptographic_visibility">
+      <title>Cryptographic Visibility: Build-Time Algorithm Analysis</title>
+      <objective>
+        Provide comprehensive visibility into cryptographic algorithms, libraries,
+        and protocols used across the application and its dependencies.
+      </objective>
+      <when_to_execute>
+        - During CI/CD build process
+        - After dependency resolution
+        - Before artifact creation
+      </when_to_execute>
+      <control_activities>
+        <activity name="quantum_safe_explorer_integration">
+          <description>Integrate IBM Quantum Safe Explorer for cryptographic inventory</description>
+          <capabilities>
+            <capability>Inventory all cryptographic algorithms in use</capability>
+            <capability>Identify cryptographic libraries and versions</capability>
+            <capability>Detect TLS stacks (OpenSSL, BoringSSL, Java security providers)</capability>
+            <capability>Map protocol usage (TLS versions, cipher suites)</capability>
+            <capability>Identify weak or deprecated algorithms</capability>
+            <capability>Highlight non-quantum-safe cryptography</capability>
+          </capabilities>
+          <analysis_scope>
+            <scope>Application code cryptographic calls</scope>
+            <scope>Third-party library dependencies</scope>
+            <scope>Framework security configurations</scope>
+            <scope>Native library cryptographic usage</scope>
+          </analysis_scope>
+        </activity>
+        <activity name="cryptographic_policy_enforcement">
+          <description>Enforce organizational cryptographic standards</description>
+          <policy_checks>
+            <check>No use of MD5 or SHA-1 for security purposes</check>
+            <check>Minimum RSA key size of 2048 bits (prefer 3072+)</check>
+            <check>TLS 1.2 minimum, TLS 1.3 preferred</check>
+            <check>Approved cipher suites only</check>
+            <check>No deprecated cryptographic libraries</check>
+          </policy_checks>
+          <action>Block builds that violate cryptographic policies</action>
+        </activity>
+        <activity name="quantum_readiness_assessment">
+          <description>Assess quantum computing risk exposure</description>
+          <assessment_areas>
+            <area>Long-term data confidentiality requirements</area>
+            <area>Public key cryptography usage</area>
+            <area>Certificate lifetimes and rotation schedules</area>
+            <area>Migration path to post-quantum algorithms</area>
+          </assessment_areas>
+        </activity>
+      </control_activities>
+      <outputs>
+        <output>Comprehensive cryptographic inventory report</output>
+        <output>Policy compliance status with violations</output>
+        <output>Quantum risk assessment with migration recommendations</output>
+        <output>Build gate decisions (pass/fail based on policy)</output>
+      </outputs>
+      <success_criteria>
+        <criterion>All cryptographic usage documented and approved</criterion>
+        <criterion>No policy violations in production builds</criterion>
+        <criterion>Quantum risk exposure understood and tracked</criterion>
+      </success_criteria>
+    </stage>
+
+    <stage number="3" name="deployment_validation">
+      <title>Deployment Validation: Configuration Resolution Verification</title>
+      <objective>
+        Validate that templated configurations resolve correctly and meet security
+        standards when deployed to target environments.
+      </objective>
+      <when_to_execute>
+        - Immediately before deployment
+        - After configuration template resolution
+        - During deployment pipeline execution
+      </when_to_execute>
+      <control_activities>
+        <activity name="configuration_resolution_validation">
+          <description>Verify resolved configurations match security requirements</description>
+          <validation_targets>
+            <target>Ansible variable resolution for TLS settings</target>
+            <target>Certificate path resolution and file existence</target>
+            <target>nginx/Apache final configuration files</target>
+            <target>Kubernetes secret mounting and volume configuration</target>
+            <target>Environment-specific security parameters</target>
+          </validation_targets>
+          <validation_checks>
+            <check>Certificate files exist and are readable</check>
+            <check>Private keys have correct permissions (600)</check>
+            <check>TLS versions match approved standards</check>
+            <check>Cipher suites are from approved list</check>
+            <check>Certificate chains are complete</check>
+            <check>Certificate validity periods are acceptable</check>
+          </validation_checks>
+        </activity>
+        <activity name="pre_deployment_security_scan">
+          <description>Scan final deployment artifacts for security issues</description>
+          <scan_targets>
+            <target>Container images (Trivy, Clair)</target>
+            <target>Kubernetes manifests (kubesec, kube-bench)</target>
+            <target>Configuration files (custom validators)</target>
+          </scan_targets>
+        </activity>
+        <activity name="configuration_drift_prevention">
+          <description>Ensure deployed configuration matches approved baseline</description>
+          <techniques>
+            <technique>Configuration checksums and signatures</technique>
+            <technique>Immutable infrastructure patterns</technique>
+            <technique>GitOps-based deployment tracking</technique>
+          </techniques>
+        </activity>
+      </control_activities>
+      <outputs>
+        <output>Deployment validation report with pass/fail status</output>
+        <output>Resolved configuration files for audit trail</output>
+        <output>Certificate validation results</output>
+        <output>Deployment approval or rejection decision</output>
+      </outputs>
+      <success_criteria>
+        <criterion>All configuration validations pass</criterion>
+        <criterion>Certificates are valid and properly configured</criterion>
+        <criterion>No drift from approved security baseline</criterion>
+        <criterion>Deployment artifacts match security standards</criterion>
+      </success_criteria>
+    </stage>
+
+    <stage number="4" name="runtime_verification">
+      <title>Runtime Verification: Live Security Posture Validation</title>
+      <objective>
+        Verify the actual security posture exposed to clients and counterparties
+        by testing live endpoints and authentication flows.
+      </objective>
+      <when_to_execute>
+        - Immediately after deployment
+        - During smoke testing phase
+        - As part of continuous security monitoring
+      </when_to_execute>
+      <control_activities>
+        <activity name="tls_endpoint_validation">
+          <description>Actively scan TLS endpoints to verify configuration</description>
+          <tools>
+            <tool name="testssl.sh">
+              <capabilities>
+                <capability>TLS version detection</capability>
+                <capability>Cipher suite enumeration</capability>
+                <capability>Certificate chain validation</capability>
+                <capability>Vulnerability scanning (BEAST, CRIME, POODLE, etc.)</capability>
+                <capability>Protocol downgrade testing</capability>
+              </capabilities>
+            </tool>
+            <tool name="SSLyze">
+              <capabilities>
+                <capability>Fast TLS scanning</capability>
+                <capability>Certificate transparency checking</capability>
+                <capability>OCSP stapling validation</capability>
+                <capability>Session resumption testing</capability>
+              </capabilities>
+            </tool>
+            <tool name="nmap with ssl-enum-ciphers">
+              <capabilities>
+                <capability>Network-level TLS discovery</capability>
+                <capability>Cipher suite strength analysis</capability>
+              </capabilities>
+            </tool>
+          </tools>
+          <validation_checks>
+            <check>Only approved TLS versions are enabled</check>
+            <check>Only approved cipher suites are offered</check>
+            <check>Certificate is valid and trusted</check>
+            <check>Certificate matches hostname</check>
+            <check>No known TLS vulnerabilities present</check>
+            <check>Perfect Forward Secrecy is enabled</check>
+            <check>HSTS header is present (for HTTPS)</check>
+          </validation_checks>
+        </activity>
+        <activity name="mtls_validation">
+          <description>Verify mutual TLS authentication is properly configured</description>
+          <validation_checks>
+            <check>Client certificate is requested</check>
+            <check>Client certificate validation is enforced</check>
+            <check>Proper certificate chain validation</check>
+            <check>Certificate revocation checking (CRL/OCSP)</check>
+          </validation_checks>
+        </activity>
+        <activity name="oauth_flow_validation">
+          <description>Test OAuth 2.0 authentication flows for security issues</description>
+          <tools>
+            <tool>OWASP ZAP with OAuth plugin</tool>
+            <tool>Burp Suite Professional</tool>
+            <tool>Custom OAuth testing scripts</tool>
+          </tools>
+          <validation_checks>
+            <check>Authorization code flow properly implemented</check>
+            <check>PKCE is used for public clients</check>
+            <check>State parameter prevents CSRF</check>
+            <check>Redirect URI validation is strict</check>
+            <check>Token endpoint requires authentication</check>
+            <check>Access tokens have appropriate scope</check>
+            <check>Refresh token rotation is implemented</check>
+            <check>Token expiration is enforced</check>
+          </validation_checks>
+        </activity>
+        <activity name="dynamic_application_security_testing">
+          <description>Perform DAST on running application</description>
+          <test_categories>
+            <category>Authentication and session management</category>
+            <category>Authorization and access control</category>
+            <category>Input validation and injection attacks</category>
+            <category>Security headers and configurations</category>
+          </test_categories>
+        </activity>
+      </control_activities>
+      <outputs>
+        <output>TLS endpoint scan results with findings</output>
+        <output>mTLS validation report</output>
+        <output>OAuth flow security assessment</output>
+        <output>DAST findings with severity ratings</output>
+        <output>Runtime security posture score</output>
+      </outputs>
+      <success_criteria>
+        <criterion>All TLS endpoints meet security standards</criterion>
+        <criterion>No high-severity vulnerabilities detected</criterion>
+        <criterion>OAuth flows are secure and properly configured</criterion>
+        <criterion>Runtime posture matches deployment intent</criterion>
+      </success_criteria>
+      <remediation_triggers>
+        <trigger>Critical findings trigger immediate rollback</trigger>
+        <trigger>High-severity findings require remediation within 24 hours</trigger>
+        <trigger>Medium findings tracked for next deployment cycle</trigger>
+      </remediation_triggers>
+    </stage>
+
+    <stage number="5" name="continuous_compliance">
+      <title>Continuous Compliance: Ongoing Monitoring and Drift Detection</title>
+      <objective>
+        Maintain security assurance over time through continuous monitoring,
+        detecting configuration drift, certificate expiration, and cryptographic changes.
+      </objective>
+      <when_to_execute>
+        - Continuously in production
+        - Scheduled periodic scans
+        - Triggered by configuration changes
+      </when_to_execute>
+      <control_activities>
+        <activity name="continuous_tls_monitoring">
+          <description>Monitor TLS posture for changes and degradation</description>
+          <monitoring_aspects>
+            <aspect>TLS version availability changes</aspect>
+            <aspect>Cipher suite modifications</aspect>
+            <aspect>Certificate rotation and renewal</aspect>
+            <aspect>Certificate expiration tracking</aspect>
+            <aspect>Certificate chain changes</aspect>
+          </monitoring_aspects>
+          <alerting>
+            <alert>Certificate expiring within 30 days</alert>
+            <alert>Unexpected TLS configuration change</alert>
+            <alert>New weak cipher suite detected</alert>
+            <alert>TLS vulnerability discovered in deployed version</alert>
+          </alerting>
+        </activity>
+        <activity name="cryptographic_posture_tracking">
+          <description>Track cryptographic exposure over time</description>
+          <tracking_metrics>
+            <metric>Cryptographic algorithm usage trends</metric>
+            <metric>Deprecated algorithm elimination progress</metric>
+            <metric>Quantum-safe migration status</metric>
+            <metric>Library version currency</metric>
+          </tracking_metrics>
+          <tools>
+            <tool>IBM Quantum Safe Explorer (continuous mode)</tool>
+            <tool>Dependency vulnerability scanners</tool>
+          </tools>
+        </activity>
+        <activity name="configuration_drift_detection">
+          <description>Detect unauthorized configuration changes</description>
+          <detection_methods>
+            <method>Periodic configuration snapshots and comparison</method>
+            <method>File integrity monitoring (FIM)</method>
+            <method>Configuration management database (CMDB) reconciliation</method>
+          </detection_methods>
+          <drift_categories>
+            <category>Unauthorized manual changes</category>
+            <category>Automated updates without approval</category>
+            <category>Environment-specific drift</category>
+          </drift_categories>
+        </activity>
+        <activity name="compliance_reporting">
+          <description>Generate audit-ready compliance evidence</description>
+          <report_types>
+            <report>Security control effectiveness dashboard</report>
+            <report>Cryptographic posture summary</report>
+            <report>Certificate inventory and status</report>
+            <report>Vulnerability remediation tracking</report>
+            <report>Compliance attestation reports</report>
+          </report_types>
+          <audit_trail>
+            <element>All security findings with timestamps</element>
+            <element>Remediation actions and approvals</element>
+            <element>Configuration change history</element>
+            <element>Exception approvals and justifications</element>
+          </audit_trail>
+        </activity>
+      </control_activities>
+      <outputs>
+        <output>Real-time security posture dashboard</output>
+        <output>Drift detection alerts and reports</output>
+        <output>Certificate expiration forecasts</output>
+        <output>Compliance status reports</output>
+        <output>Audit-ready evidence packages</output>
+      </outputs>
+      <success_criteria>
+        <criterion>No undetected configuration drift</criterion>
+        <criterion>All certificates renewed before expiration</criterion>
+        <criterion>Cryptographic posture continuously improving</criterion>
+        <criterion>Compliance evidence readily available</criterion>
+      </success_criteria>
+    </stage>
+  </five_stage_control_model>
+
+  <workflow_execution_guidelines>
+    <guideline name="iterative_improvement">
+      <description>
+        Implement controls iteratively. Start with critical controls (runtime validation)
+        and expand coverage over time. Don't wait for perfect implementation.
+      </description>
+    </guideline>
+    <guideline name="evidence_generation">
+      <description>
+        Every control point must generate traceable evidence. This evidence supports
+        audit requirements and demonstrates due diligence.
+      </description>
+    </guideline>
+    <guideline name="automation_first">
+      <description>
+        Automate all controls wherever possible. Manual processes don't scale and
+        introduce human error. Use CI/CD integration extensively.
+      </description>
+    </guideline>
+    <guideline name="fail_secure">
+      <description>
+        When controls detect issues, default to blocking deployment or triggering
+        alerts. Never silently ignore security findings.
+      </description>
+    </guideline>
+    <guideline name="defense_in_depth">
+      <description>
+        Multiple control stages provide redundancy. If one stage misses an issue,
+        subsequent stages should catch it. Never rely on a single control point.
+      </description>
+    </guideline>
+  </workflow_execution_guidelines>
+
+  <integration_with_existing_processes>
+    <integration name="cicd_pipeline">
+      <description>Embed security controls into existing CI/CD pipelines</description>
+      <stages>
+        <stage>Pre-commit: Static analysis and secrets detection</stage>
+        <stage>Build: Cryptographic visibility and policy enforcement</stage>
+        <stage>Pre-deployment: Configuration validation</stage>
+        <stage>Post-deployment: Runtime verification</stage>
+        <stage>Production: Continuous monitoring</stage>
+      </stages>
+    </integration>
+    <integration name="incident_response">
+      <description>Security findings feed into incident response processes</description>
+      <escalation>
+        <level>Critical: Immediate incident, potential rollback</level>
+        <level>High: Urgent remediation required</level>
+        <level>Medium: Tracked for next deployment</level>
+        <level>Low: Backlog for future improvement</level>
+      </escalation>
+    </integration>
+    <integration name="risk_management">
+      <description>Control effectiveness maps to risk statements</description>
+      <mapping>
+        <risk>Cryptographic weakness → Stages 2, 4, 5</risk>
+        <risk>Configuration error → Stages 1, 3, 5</risk>
+        <risk>Certificate expiration → Stages 3, 5</risk>
+        <risk>OAuth misconfiguration → Stages 1, 4</risk>
+      </mapping>
+    </integration>
+  </integration_with_existing_processes>
+</devsecops_security_workflow>
