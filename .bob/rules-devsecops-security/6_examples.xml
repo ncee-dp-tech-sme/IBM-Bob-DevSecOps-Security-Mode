@@ -1,0 +1,1219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<practical_examples>
+  <overview>
+    Complete workflow examples demonstrating how to implement DevSecOps security
+    controls for common scenarios in regulated banking environments.
+  </overview>
+
+  <example name="securing_spring_boot_api">
+    <scenario>
+      Implementing TLS/mTLS and OAuth security for a new Spring Boot REST API
+      that handles financial transactions.
+    </scenario>
+
+    <requirements>
+      <requirement>TLS 1.3 for all endpoints</requirement>
+      <requirement>mTLS for service-to-service communication</requirement>
+      <requirement>OAuth 2.0 with PKCE for user authentication</requirement>
+      <requirement>PCI DSS compliance</requirement>
+    </requirements>
+
+    <workflow>
+      <phase name="development">
+        <step number="1">
+          <action>Configure Spring Boot security</action>
+          <implementation><![CDATA[
+// SecurityConfig.java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            // Require HTTPS for all requests
+            .requiresChannel(channel -> channel
+                .anyRequest().requiresSecure())
+            
+            // OAuth2 login with PKCE
+            .oauth2Login(oauth2 -> oauth2
+                .authorizationEndpoint(authorization -> authorization
+                    .authorizationRequestResolver(pkceAuthorizationRequestResolver()))
+                .redirectionEndpoint(redirection -> redirection
+                    .baseUri("/oauth2/callback/*")))
+            
+            // OAuth2 resource server
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt
+                    .jwtAuthenticationConverter(jwtAuthenticationConverter())))
+            
+            // Endpoint authorization
+            .authorizeHttpRequests(authorize -> authorize
+                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/api/transactions/**").hasAuthority("SCOPE_transactions:write")
+                .requestMatchers("/api/accounts/**").hasAuthority("SCOPE_accounts:read")
+                .anyRequest().authenticated());
+        
+        return http.build();
+    }
+    
+    @Bean
+    public OAuth2AuthorizationRequestResolver pkceAuthorizationRequestResolver() {
+        DefaultOAuth2AuthorizationRequestResolver resolver = 
+            new DefaultOAuth2AuthorizationRequestResolver(
+                clientRegistrationRepository, "/oauth2/authorization");
+        resolver.setAuthorizationRequestCustomizer(
+            OAuth2AuthorizationRequestCustomizers.withPkce());
+        return resolver;
+    }
+}
+          ]]></implementation>
+        </step>
+
+        <step number="2">
+          <action>Configure TLS/mTLS in application.yml</action>
+          <implementation><![CDATA[
+# application.yml
+server:
+  port: 8443
+  ssl:
+    enabled: true
+    bundle: "server-cert"
+    client-auth: need  # Require client certificates for mTLS
+
+spring:
+  ssl:
+    bundle:
+      pem:
+        server-cert:
+          keystore:
+            certificate: "classpath:certs/server-cert.pem"
+            private-key: "classpath:certs/server-key.pem"
+          truststore:
+            certificate: "classpath:certs/ca-cert.pem"
+  
+  security:
+    oauth2:
+      client:
+        registration:
+          banking-app:
+            client-id: ${OAUTH_CLIENT_ID}
+            client-secret: ${OAUTH_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/oauth2/callback/{registrationId}"
+            scope:
+              - openid
+              - profile
+              - transactions:write
+              - accounts:read
+        provider:
+          banking-app:
+            authorization-uri: https://auth.bank.example.com/oauth2/authorize
+            token-uri: https://auth.bank.example.com/oauth2/token
+            user-info-uri: https://auth.bank.example.com/oauth2/userinfo
+            jwk-set-uri: https://auth.bank.example.com/oauth2/jwks
+          ]]></implementation>
+        </step>
+
+        <step number="3">
+          <action>Run static analysis (Control Point 1)</action>
+          <commands>
+            <command>semgrep --config=.semgrep/spring-security.yml src/</command>
+            <command>checkov -d . --framework dockerfile</command>
+            <command>git secrets --scan</command>
+          </commands>
+          <expected_outcome>
+            No CRITICAL findings. WARNING for SSL bundle usage (expected, requires verification).
+          </expected_outcome>
+        </step>
+      </phase>
+
+      <phase name="build">
+        <step number="4">
+          <action>Run cryptographic analysis (Control Point 2)</action>
+          <commands>
+            <command>mvn clean package</command>
+            <command>qse-scan --input target/banking-api.jar --policy qse-policy.json --output qse-report.json</command>
+          </commands>
+          <validation>
+            <check>Verify only approved algorithms (AES-256-GCM, RSA-3072, SHA-256)</check>
+            <check>Confirm TLS 1.3 support</check>
+            <check>No MD5, SHA-1, or weak ciphers</check>
+          </validation>
+        </step>
+
+        <step number="5">
+          <action>Build and scan container image</action>
+          <implementation><![CDATA[
+# Dockerfile
+FROM eclipse-temurin:17-jre-alpine
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
+COPY target/banking-api.jar app.jar
+ENTRYPOINT ["java", "-jar", "/app.jar"]
+          ]]></implementation>
+          <commands>
+            <command>docker build -t banking-api:latest .</command>
+            <command>trivy image --severity HIGH,CRITICAL banking-api:latest</command>
+          </commands>
+        </step>
+      </phase>
+
+      <phase name="deployment">
+        <step number="6">
+          <action>Deploy to Kubernetes with TLS configuration</action>
+          <implementation><![CDATA[
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: banking-api
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: banking-api
+        image: banking-api:latest
+        ports:
+        - containerPort: 8443
+          name: https
+        env:
+        - name: OAUTH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth-credentials
+              key: client-id
+        - name: OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth-credentials
+              key: client-secret
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /app/certs
+          readOnly: true
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: banking-api-tls
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: banking-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 443
+    targetPort: 8443
+    protocol: TCP
+    name: https
+  selector:
+    app: banking-api
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: banking-api
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.3 TLSv1.2"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256"
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+    nginx.ingress.kubernetes.io/auth-tls-secret: "default/client-ca"
+spec:
+  tls:
+  - hosts:
+    - api.bank.example.com
+    secretName: banking-api-ingress-tls
+  rules:
+  - host: api.bank.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: banking-api
+            port:
+              number: 443
+          ]]></implementation>
+        </step>
+
+        <step number="7">
+          <action>Validate deployment configuration (Control Point 3)</action>
+          <commands>
+            <command>kubectl apply --dry-run=server -f deployment.yaml</command>
+            <command>kubesec scan deployment.yaml</command>
+            <command>./validate-tls-config.sh</command>
+          </commands>
+          <validation_script><![CDATA[
+#!/bin/bash
+# validate-tls-config.sh
+
+# Check certificate validity
+openssl x509 -in certs/server-cert.pem -noout -checkend 2592000
+if [ $? -ne 0 ]; then
+    echo "ERROR: Certificate expires within 30 days"
+    exit 1
+fi
+
+# Verify certificate chain
+openssl verify -CAfile certs/ca-cert.pem certs/server-cert.pem
+if [ $? -ne 0 ]; then
+    echo "ERROR: Certificate chain validation failed"
+    exit 1
+fi
+
+# Check key permissions
+if [ "$(stat -c %a certs/server-key.pem)" != "600" ]; then
+    echo "ERROR: Private key has insecure permissions"
+    exit 1
+fi
+
+echo "Configuration validation passed"
+          ]]></validation_script>
+        </step>
+      </phase>
+
+      <phase name="runtime_validation">
+        <step number="8">
+          <action>Validate TLS configuration (Control Point 4)</action>
+          <commands>
+            <command>testssl.sh --jsonfile tls-results.json https://api.bank.example.com</command>
+            <command>sslyze --regular --json_out=sslyze-results.json api.bank.example.com:443</command>
+          </commands>
+          <expected_results>
+            <result>TLS 1.3 or 1.2 only</result>
+            <result>Strong AEAD cipher suites</result>
+            <result>Valid certificate with proper chain</result>
+            <result>HSTS header present</result>
+            <result>Client certificate required (mTLS)</result>
+          </expected_results>
+        </step>
+
+        <step number="9">
+          <action>Test OAuth flows (Control Point 4)</action>
+          <commands>
+            <command>zap-api-scan.py -t https://api.bank.example.com/openapi.json -f openapi</command>
+          </commands>
+          <manual_tests>
+            <test>Verify PKCE code_challenge is required</test>
+            <test>Verify state parameter prevents CSRF</test>
+            <test>Verify redirect_uri is strictly validated</test>
+            <test>Verify token expiration is enforced</test>
+            <test>Verify scope-based authorization works</test>
+          </manual_tests>
+        </step>
+
+        <step number="10">
+          <action>Test mTLS authentication</action>
+          <test_script><![CDATA[
+#!/bin/bash
+# test-mtls.sh
+
+API_URL="https://api.bank.example.com/api/health"
+
+# Test 1: No client certificate (should fail)
+echo "Test 1: No client certificate"
+curl -v $API_URL 2>&1 | grep "client certificate"
+
+# Test 2: Valid client certificate (should succeed)
+echo "Test 2: Valid client certificate"
+curl --cert client.pem --key client-key.pem $API_URL
+
+# Test 3: Invalid client certificate (should fail)
+echo "Test 3: Invalid client certificate"
+curl --cert invalid-client.pem --key invalid-key.pem $API_URL 2>&1 | grep "certificate"
+
+# Test 4: Revoked client certificate (should fail)
+echo "Test 4: Revoked client certificate"
+curl --cert revoked-client.pem --key revoked-key.pem $API_URL 2>&1 | grep "revoked"
+          ]]></test_script>
+        </step>
+      </phase>
+
+      <phase name="continuous_monitoring">
+        <step number="11">
+          <action>Set up continuous monitoring (Control Point 5)</action>
+          <monitoring_configuration><![CDATA[
+# prometheus-rules.yml
+groups:
+- name: tls_monitoring
+  interval: 4h
+  rules:
+  - alert: TLSConfigurationChanged
+    expr: tls_config_hash != tls_config_baseline_hash
+    annotations:
+      summary: "TLS configuration drift detected"
+      
+  - alert: CertificateExpiringSoon
+    expr: (cert_expiry_timestamp - time()) < 2592000
+    annotations:
+      summary: "Certificate expires in less than 30 days"
+      
+  - alert: WeakCipherDetected
+    expr: weak_cipher_offered == 1
+    annotations:
+      summary: "Weak cipher suite detected on endpoint"
+          ]]></monitoring_configuration>
+        </step>
+      </phase>
+    </workflow>
+
+    <success_criteria>
+      <criterion>All 5 control points executed successfully</criterion>
+      <criterion>No CRITICAL security findings</criterion>
+      <criterion>TLS 1.3/1.2 only with strong ciphers</criterion>
+      <criterion>mTLS working correctly</criterion>
+      <criterion>OAuth flows secure and functional</criterion>
+      <criterion>Continuous monitoring active</criterion>
+    </success_criteria>
+  </example>
+
+  <example name="securing_nginx_reverse_proxy">
+    <scenario>
+      Configuring nginx as a reverse proxy with hardened TLS for banking applications.
+    </scenario>
+
+    <workflow>
+      <step number="1">
+        <action>Create nginx configuration with TLS hardening</action>
+        <implementation><![CDATA[
+# nginx.conf
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    
+    # TLS configuration
+    ssl_protocols TLSv1.3 TLSv1.2;
+    ssl_ciphers 'ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256';
+    ssl_prefer_server_ciphers off;
+    
+    # SSL session configuration
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_session_tickets off;
+    
+    # OCSP stapling
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_trusted_certificate /etc/nginx/certs/ca-chain.pem;
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 5s;
+    
+    # Disable compression
+    gzip off;
+    
+    server {
+        listen 443 ssl http2;
+        server_name api.bank.example.com;
+        
+        # TLS certificates
+        ssl_certificate /etc/nginx/certs/server-cert.pem;
+        ssl_certificate_key /etc/nginx/certs/server-key.pem;
+        
+        # Client certificate authentication (mTLS)
+        ssl_client_certificate /etc/nginx/certs/client-ca.pem;
+        ssl_verify_client on;
+        ssl_verify_depth 2;
+        
+        # CRL for revocation checking
+        ssl_crl /etc/nginx/certs/crl.pem;
+        
+        # Proxy to backend
+        location / {
+            proxy_pass https://backend:8443;
+            proxy_ssl_certificate /etc/nginx/certs/proxy-client-cert.pem;
+            proxy_ssl_certificate_key /etc/nginx/certs/proxy-client-key.pem;
+            proxy_ssl_trusted_certificate /etc/nginx/certs/backend-ca.pem;
+            proxy_ssl_verify on;
+            proxy_ssl_verify_depth 2;
+            
+            # Pass client certificate info to backend
+            proxy_set_header X-SSL-Client-Cert $ssl_client_cert;
+            proxy_set_header X-SSL-Client-S-DN $ssl_client_s_dn;
+            proxy_set_header X-SSL-Client-Verify $ssl_client_verify;
+        }
+        
+        # Health check endpoint (no client cert required)
+        location /health {
+            ssl_verify_client optional;
+            return 200 "OK\n";
+            add_header Content-Type text/plain;
+        }
+    }
+    
+    # Redirect HTTP to HTTPS
+    server {
+        listen 80;
+        server_name api.bank.example.com;
+        return 301 https://$server_name$request_uri;
+    }
+}
+        ]]></implementation>
+      </step>
+
+      <step number="2">
+        <action>Create Ansible playbook for deployment</action>
+        <implementation><![CDATA[
+# deploy-nginx.yml
+---
+- name: Deploy nginx with TLS configuration
+  hosts: web_servers
+  become: yes
+  
+  vars:
+    nginx_cert_path: /etc/nginx/certs
+    cert_expiry_days: 30
+  
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+    
+    - name: Create certificate directory
+      file:
+        path: "{{ nginx_cert_path }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Copy TLS certificates
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ nginx_cert_path }}/{{ item.dest }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { src: 'certs/server-cert.pem', dest: 'server-cert.pem', mode: '0644' }
+        - { src: 'certs/server-key.pem', dest: 'server-key.pem', mode: '0600' }
+        - { src: 'certs/client-ca.pem', dest: 'client-ca.pem', mode: '0644' }
+        - { src: 'certs/ca-chain.pem', dest: 'ca-chain.pem', mode: '0644' }
+        - { src: 'certs/crl.pem', dest: 'crl.pem', mode: '0644' }
+      notify: reload nginx
+    
+    - name: Validate certificate expiration
+      command: openssl x509 -in {{ nginx_cert_path }}/server-cert.pem -noout -checkend {{ cert_expiry_days * 86400 }}
+      register: cert_check
+      failed_when: cert_check.rc != 0
+      changed_when: false
+    
+    - name: Validate certificate chain
+      command: openssl verify -CAfile {{ nginx_cert_path }}/ca-chain.pem {{ nginx_cert_path }}/server-cert.pem
+      register: chain_check
+      failed_when: chain_check.rc != 0
+      changed_when: false
+    
+    - name: Deploy nginx configuration
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        validate: 'nginx -t -c %s'
+      notify: reload nginx
+    
+    - name: Ensure nginx is running
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+  
+  handlers:
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded
+        ]]></implementation>
+      </step>
+
+      <step number="3">
+        <action>Scan IaC configuration (Control Point 1)</action>
+        <commands>
+          <command>checkov -f deploy-nginx.yml</command>
+          <command>ansible-lint deploy-nginx.yml</command>
+        </commands>
+      </step>
+
+      <step number="4">
+        <action>Deploy with validation (Control Point 3)</action>
+        <commands>
+          <command>ansible-playbook --check deploy-nginx.yml</command>
+          <command>ansible-playbook deploy-nginx.yml</command>
+        </commands>
+      </step>
+
+      <step number="5">
+        <action>Runtime validation (Control Point 4)</action>
+        <commands>
+          <command>testssl.sh --severity HIGH https://api.bank.example.com</command>
+          <command>nmap --script ssl-enum-ciphers -p 443 api.bank.example.com</command>
+        </commands>
+        <validation_script><![CDATA[
+#!/bin/bash
+# validate-nginx-tls.sh
+
+HOST="api.bank.example.com"
+PORT=443
+
+echo "=== TLS Protocol Validation ==="
+openssl s_client -connect $HOST:$PORT -tls1_3 < /dev/null 2>&1 | grep "Protocol"
+openssl s_client -connect $HOST:$PORT -tls1_2 < /dev/null 2>&1 | grep "Protocol"
+
+echo "=== Cipher Suite Validation ==="
+openssl s_client -connect $HOST:$PORT -cipher 'ECDHE-RSA-AES256-GCM-SHA384' < /dev/null 2>&1 | grep "Cipher"
+
+echo "=== Certificate Validation ==="
+openssl s_client -connect $HOST:$PORT -showcerts < /dev/null 2>&1 | openssl x509 -noout -subject -issuer -dates
+
+echo "=== HSTS Header Validation ==="
+curl -I https://$HOST 2>&1 | grep -i "strict-transport-security"
+
+echo "=== mTLS Validation ==="
+curl -v https://$HOST 2>&1 | grep "client certificate"
+        ]]></validation_script>
+      </step>
+    </workflow>
+  </example>
+
+  <example name="oauth_security_implementation">
+    <scenario>
+      Implementing secure OAuth 2.0 authorization server for banking applications.
+    </scenario>
+
+    <workflow>
+      <step number="1">
+        <action>Configure Spring Authorization Server</action>
+        <implementation><![CDATA[
+// AuthorizationServerConfig.java
+@Configuration
+public class AuthorizationServerConfig {
+    
+    @Bean
+    @Order(1)
+    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) 
+            throws Exception {
+        OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
+        
+        http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
+            .oidc(Customizer.withDefaults());
+        
+        http
+            .exceptionHandling(exceptions -> exceptions
+                .defaultAuthenticationEntryPointFor(
+                    new LoginUrlAuthenticationEntryPoint("/login"),
+                    new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(Customizer.withDefaults()));
+        
+        return http.build();
+    }
+    
+    @Bean
+    public RegisteredClientRepository registeredClientRepository() {
+        RegisteredClient bankingApp = RegisteredClient.withId(UUID.randomUUID().toString())
+            .clientId("banking-app")
+            .clientSecret("{bcrypt}" + passwordEncoder().encode("secret"))
+            .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
+            .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+            .redirectUri("https://app.bank.example.com/oauth2/callback")
+            .scope(OidcScopes.OPENID)
+            .scope(OidcScopes.PROFILE)
+            .scope("transactions:read")
+            .scope("transactions:write")
+            .scope("accounts:read")
+            .clientSettings(ClientSettings.builder()
+                .requireAuthorizationConsent(true)
+                .requireProofKey(true)  // Require PKCE
+                .build())
+            .tokenSettings(TokenSettings.builder()
+                .accessTokenTimeToLive(Duration.ofMinutes(15))
+                .refreshTokenTimeToLive(Duration.ofDays(1))
+                .reuseRefreshTokens(false)  // Refresh token rotation
+                .build())
+            .build();
+        
+        return new InMemoryRegisteredClientRepository(bankingApp);
+    }
+    
+    @Bean
+    public JWKSource<SecurityContext> jwkSource() {
+        KeyPair keyPair = generateRsaKey();
+        RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
+        RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
+        RSAKey rsaKey = new RSAKey.Builder(publicKey)
+            .privateKey(privateKey)
+            .keyID(UUID.randomUUID().toString())
+            .build();
+        JWKSet jwkSet = new JWKSet(rsaKey);
+        return new ImmutableJWKSet<>(jwkSet);
+    }
+    
+    private static KeyPair generateRsaKey() {
+        KeyPair keyPair;
+        try {
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+            keyPairGenerator.initialize(3072);  // RSA-3072 for quantum resistance
+            keyPair = keyPairGenerator.generateKeyPair();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+        return keyPair;
+    }
+    
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+}
+        ]]></implementation>
+      </step>
+
+      <step number="2">
+        <action>Implement strict redirect URI validation</action>
+        <implementation><![CDATA[
+// RedirectUriValidator.java
+@Component
+public class RedirectUriValidator {
+    
+    private static final Set<String> ALLOWED_REDIRECT_URIS = Set.of(
+        "https://app.bank.example.com/oauth2/callback",
+        "https://mobile.bank.example.com/oauth2/callback"
+    );
+    
+    public boolean isValid(String redirectUri) {
+        // Exact string matching only - no wildcards, no pattern matching
+        return ALLOWED_REDIRECT_URIS.contains(redirectUri);
+    }
+    
+    public void validate(String redirectUri) {
+        if (!isValid(redirectUri)) {
+            throw new OAuth2AuthenticationException(
+                new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST, 
+                    "Invalid redirect_uri", null));
+        }
+    }
+}
+        ]]></implementation>
+      </step>
+
+      <step number="3">
+        <action>Implement PKCE enforcement</action>
+        <implementation><![CDATA[
+// PKCEValidator.java
+@Component
+public class PKCEValidator {
+    
+    public void validateAuthorizationRequest(OAuth2AuthorizationRequest request) {
+        String codeChallenge = request.getAttribute("code_challenge");
+        String codeChallengeMethod = request.getAttribute("code_challenge_method");
+        
+        if (codeChallenge == null || codeChallengeMethod == null) {
+            throw new OAuth2AuthenticationException(
+                new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "PKCE is required: code_challenge and code_challenge_method must be provided",
+                    null));
+        }
+        
+        if (!"S256".equals(codeChallengeMethod)) {
+            throw new OAuth2AuthenticationException(
+                new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Only S256 code_challenge_method is supported",
+                    null));
+        }
+    }
+    
+    public void validateTokenRequest(String codeVerifier, String codeChallenge) {
+        if (codeVerifier == null) {
+            throw new OAuth2AuthenticationException(
+                new OAuth2Error(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "code_verifier is required",
+                    null));
+        }
+        
+        // Verify code_verifier matches code_challenge
+        String computedChallenge = Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(
+                MessageDigest.getInstance("SHA-256")
+                    .digest(codeVerifier.getBytes(StandardCharsets.US_ASCII)));
+        
+        if (!computedChallenge.equals(codeChallenge)) {
+            throw new OAuth2AuthenticationException(
+                new OAuth2Error(OAuth2ErrorCodes.INVALID_GRANT,
+                    "Invalid code_verifier",
+                    null));
+        }
+    }
+}
+        ]]></implementation>
+      </step>
+
+      <step number="4">
+        <action>Test OAuth security (Control Point 4)</action>
+        <test_cases>
+          <test name="pkce_required">
+            <description>Verify PKCE is enforced</description>
+            <test_script><![CDATA[
+# Test without PKCE (should fail)
+curl -X POST "https://auth.bank.example.com/oauth2/authorize" \
+  -d "client_id=banking-app" \
+  -d "redirect_uri=https://app.bank.example.com/oauth2/callback" \
+  -d "response_type=code" \
+  -d "scope=openid profile" \
+  -d "state=random_state"
+
+# Expected: Error indicating PKCE is required
+            ]]></test_script>
+          </test>
+
+          <test name="redirect_uri_validation">
+            <description>Verify strict redirect URI validation</description>
+            <test_script><![CDATA[
+# Test with invalid redirect_uri (should fail)
+curl -X POST "https://auth.bank.example.com/oauth2/authorize" \
+  -d "client_id=banking-app" \
+  -d "redirect_uri=https://evil.com/callback" \
+  -d "response_type=code" \
+  -d "scope=openid profile" \
+  -d "state=random_state" \
+  -d "code_challenge=challenge" \
+  -d "code_challenge_method=S256"
+
+# Expected: Error indicating invalid redirect_uri
+            ]]></test_script>
+          </test>
+
+          <test name="token_expiration">
+            <description>Verify access token expiration</description>
+            <test_script><![CDATA[
+# Get access token
+TOKEN=$(curl -X POST "https://auth.bank.example.com/oauth2/token" \
+  -d "grant_type=authorization_code" \
+  -d "code=$AUTH_CODE" \
+  -d "redirect_uri=https://app.bank.example.com/oauth2/callback" \
+  -d "client_id=banking-app" \
+  -d "client_secret=secret" \
+  -d "code_verifier=$CODE_VERIFIER" \
+  | jq -r '.access_token')
+
+# Wait 16 minutes (token expires after 15 minutes)
+sleep 960
+
+# Try to use expired token (should fail)
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.bank.example.com/api/accounts"
+
+# Expected: 401 Unauthorized
+            ]]></test_script>
+          </test>
+
+          <test name="refresh_token_rotation">
+            <description>Verify refresh token rotation</description>
+            <test_script><![CDATA[
+# Use refresh token
+RESPONSE=$(curl -X POST "https://auth.bank.example.com/oauth2/token" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=$REFRESH_TOKEN" \
+  -d "client_id=banking-app" \
+  -d "client_secret=secret")
+
+NEW_REFRESH_TOKEN=$(echo $RESPONSE | jq -r '.refresh_token')
+
+# Try to use old refresh token again (should fail)
+curl -X POST "https://auth.bank.example.com/oauth2/token" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=$REFRESH_TOKEN" \
+  -d "client_id=banking-app" \
+  -d "client_secret=secret"
+
+# Expected: Error indicating token was already used
+            ]]></test_script>
+          </test>
+        </test_cases>
+      </step>
+    </workflow>
+  </example>
+
+  <example name="certificate_lifecycle_management">
+    <scenario>
+      Implementing automated certificate lifecycle management with monitoring
+      and renewal for banking infrastructure.
+    </scenario>
+
+    <workflow>
+      <step number="1">
+        <action>Set up certificate inventory</action>
+        <implementation><![CDATA[
+# certificate-inventory.yml
+certificates:
+  - name: api-server-cert
+    type: server
+    path: /etc/certs/api-server-cert.pem
+    key_path: /etc/certs/api-server-key.pem
+    domains:
+      - api.bank.example.com
+    expiry_alert_days: [60, 30, 14, 7]
+    renewal_method: acme
+    
+  - name: mtls-client-cert
+    type: client
+    path: /etc/certs/mtls-client-cert.pem
+    key_path: /etc/certs/mtls-client-key.pem
+    ca: internal-ca
+    expiry_alert_days: [60, 30, 14, 7]
+    renewal_method: internal
+    
+  - name: code-signing-cert
+    type: signing
+    path: /etc/certs/code-signing-cert.pem
+    key_path: /etc/certs/code-signing-key.pem
+    expiry_alert_days: [90, 60, 30]
+    renewal_method: manual
+        ]]></implementation>
+      </step>
+
+      <step number="2">
+        <action>Create certificate monitoring script</action>
+        <implementation><![CDATA[
+#!/usr/bin/env python3
+# monitor-certificates.py
+
+import subprocess
+import datetime
+import json
+import yaml
+from pathlib import Path
+
+def check_certificate_expiry(cert_path):
+    """Check certificate expiration date"""
+    cmd = ['openssl', 'x509', '-in', cert_path, '-noout', '-enddate']
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        return None
+    
+    # Parse expiry date
+    expiry_str = result.stdout.strip().replace('notAfter=', '')
+    expiry_date = datetime.datetime.strptime(expiry_str, '%b %d %H:%M:%S %Y %Z')
+    
+    days_until_expiry = (expiry_date - datetime.datetime.now()).days
+    return days_until_expiry
+
+def check_certificate_chain(cert_path, ca_path):
+    """Verify certificate chain"""
+    cmd = ['openssl', 'verify', '-CAfile', ca_path, cert_path]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.returncode == 0
+
+def main():
+    # Load certificate inventory
+    with open('certificate-inventory.yml') as f:
+        inventory = yaml.safe_load(f)
+    
+    alerts = []
+    
+    for cert in inventory['certificates']:
+        cert_path = cert['path']
+        
+        # Check expiration
+        days_until_expiry = check_certificate_expiry(cert_path)
+        
+        if days_until_expiry is None:
+            alerts.append({
+                'severity': 'CRITICAL',
+                'certificate': cert['name'],
+                'message': 'Certificate file not found or invalid'
+            })
+            continue
+        
+        # Check against alert thresholds
+        for threshold in cert['expiry_alert_days']:
+            if days_until_expiry <= threshold:
+                severity = 'CRITICAL' if days_until_expiry <= 7 else 'WARNING'
+                alerts.append({
+                    'severity': severity,
+                    'certificate': cert['name'],
+                    'message': f'Certificate expires in {days_until_expiry} days',
+                    'expiry_days': days_until_expiry,
+                    'renewal_method': cert['renewal_method']
+                })
+                break
+    
+    # Output alerts
+    if alerts:
+        print(json.dumps(alerts, indent=2))
+        return 1
+    else:
+        print("All certificates valid")
+        return 0
+
+if __name__ == '__main__':
+    exit(main())
+        ]]></implementation>
+      </step>
+
+      <step number="3">
+        <action>Implement automated renewal with Let's Encrypt</action>
+        <implementation><![CDATA[
+#!/bin/bash
+# renew-certificates.sh
+
+CERT_DIR="/etc/certs"
+ACME_DIR="/var/lib/acme"
+DOMAINS="api.bank.example.com"
+
+# Request new certificate using certbot
+certbot certonly \
+  --webroot \
+  --webroot-path=/var/www/html \
+  --email security@bank.example.com \
+  --agree-tos \
+  --no-eff-email \
+  --domains $DOMAINS \
+  --cert-name api-server-cert
+
+# Copy certificates to application directory
+cp /etc/letsencrypt/live/api-server-cert/fullchain.pem $CERT_DIR/api-server-cert.pem
+cp /etc/letsencrypt/live/api-server-cert/privkey.pem $CERT_DIR/api-server-key.pem
+
+# Set proper permissions
+chmod 644 $CERT_DIR/api-server-cert.pem
+chmod 600 $CERT_DIR/api-server-key.pem
+
+# Reload services
+systemctl reload nginx
+kubectl rollout restart deployment/banking-api
+
+# Verify new certificate
+./validate-certificate.sh $CERT_DIR/api-server-cert.pem
+        ]]></implementation>
+      </step>
+
+      <step number="4">
+        <action>Set up monitoring and alerting</action>
+        <implementation><![CDATA[
+# prometheus-certificate-exporter.yml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: certificate-exporter-config
+data:
+  config.yml: |
+    certificates:
+      - name: api_server_cert
+        path: /certs/api-server-cert.pem
+      - name: mtls_client_cert
+        path: /certs/mtls-client-cert.pem
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: certificate-exporter
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: certificate-exporter
+        image: enix/x509-certificate-exporter:latest
+        volumeMounts:
+        - name: certs
+          mountPath: /certs
+          readOnly: true
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: certs
+        secret:
+          secretName: tls-certificates
+      - name: config
+        configMap:
+          name: certificate-exporter-config
+
+---
+# Prometheus alert rules
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-certificate-alerts
+data:
+  certificate-alerts.yml: |
+    groups:
+    - name: certificates
+      rules:
+      - alert: CertificateExpiringSoon
+        expr: x509_cert_not_after - time() < 2592000
+        labels:
+          severity: warning
+        annotations:
+          summary: "Certificate {{ $labels.subject_CN }} expires in less than 30 days"
+          
+      - alert: CertificateExpiringCritical
+        expr: x509_cert_not_after - time() < 604800
+        labels:
+          severity: critical
+        annotations:
+          summary: "Certificate {{ $labels.subject_CN }} expires in less than 7 days"
+          
+      - alert: CertificateExpired
+        expr: x509_cert_not_after - time() < 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Certificate {{ $labels.subject_CN }} has expired"
+        ]]></implementation>
+      </step>
+
+      <step number="5">
+        <action>Create certificate renewal automation</action>
+        <implementation><![CDATA[
+# Kubernetes CronJob for automated renewal
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: certificate-renewal
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cert-renewal
+            image: certbot/certbot:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Check certificates and renew if needed
+              python3 /scripts/monitor-certificates.py
+              
+              # Renew certificates expiring within 30 days
+              certbot renew --deploy-hook "/scripts/deploy-renewed-cert.sh"
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: letsencrypt
+              mountPath: /etc/letsencrypt
+          volumes:
+          - name: scripts
+            configMap:
+              name: cert-renewal-scripts
+          - name: letsencrypt
+            persistentVolumeClaim:
+              claimName: letsencrypt-data
+          restartPolicy: OnFailure
+        ]]></implementation>
+      </step>
+    </workflow>
+
+    <success_criteria>
+      <criterion>All certificates monitored continuously</criterion>
+      <criterion>Alerts triggered at appropriate thresholds</criterion>
+      <criterion>Automated renewal working for ACME certificates</criterion>
+      <criterion>Zero certificate expiration incidents</criterion>
+    </success_criteria>
+  </example>
+
+  <common_patterns>
+    <pattern name="pre_deployment_checklist">
+      <description>Standard checklist before any security-sensitive deployment</description>
+      <checklist>
+        <item>✓ Static analysis passed (Semgrep, Checkov)</item>
+        <item>✓ Cryptographic analysis passed (IBM Quantum Safe Explorer)</item>
+        <item>✓ No secrets in code (git-secrets, TruffleHog)</item>
+        <item>✓ Configuration validated (certificates, TLS settings)</item>
+        <item>✓ Container scanned (Trivy, no HIGH/CRITICAL vulnerabilities)</item>
+        <item>✓ Kubernetes manifests validated (kubesec)</item>
+        <item>✓ Deployment approved by security team</item>
+      </checklist>
+    </pattern>
+
+    <pattern name="post_deployment_validation">
+      <description>Standard validation after deployment</description>
+      <checklist>
+        <item>✓ TLS endpoint scan (testssl.sh, SSLyze)</item>
+        <item>✓ mTLS authentication tested</item>
+        <item>✓ OAuth flows validated (OWASP ZAP)</item>
+        <item>✓ Security headers present</item>
+        <item>✓ Monitoring and alerting active</item>
+        <item>✓ Smoke tests passed</item>
+      </checklist>
+    </pattern>
+
+    <pattern name="incident_response_workflow">
+      <description>Response workflow for security findings</description>
+      <workflow>
+        <step severity="CRITICAL">
+          <action>Alert on-call security team immediately</action>
+          <action>Evaluate rollback necessity</action>
+          <action>Implement emergency fix or rollback</action>
+          <action>Re-validate after fix</action>
+          <action>Document incident and lessons learned</action>
+        </step>
+        <step severity="HIGH">
+          <action>Create incident ticket</action>
+          <action>Assign to security team</action>
+          <action>Develop remediation plan within 4 hours</action>
+          <action>Deploy fix within 24 hours</action>
+          <action>Validate remediation</action>
+        </step>
+        <step severity="MEDIUM">
+          <action>Add to security backlog</action>
+          <action>Include in next sprint</action>
+          <action>Deploy with next regular release</action>
+        </step>
+      </workflow>
+    </pattern>
+  </common_patterns>
+
+  <troubleshooting_guide>
+    <issue name="tls_handshake_failure">
+      <symptoms>
+        <symptom>Connection refused or timeout</symptom>
+        <symptom>SSL handshake failed errors</symptom>
+        <symptom>Certificate verification errors</symptom>
+      </symptoms>
+      <diagnosis>
+        <step>Check TLS version compatibility: openssl s_client -connect host:port -tls1_3</step>
+        <step>Verify cipher suite support: openssl s_client -connect host:port -cipher 'ECDHE-RSA-AES256-GCM-SHA384'</step>
+        <step>Validate certificate chain: openssl s_client -connect host:port -showcerts</step>
+        <step>Check certificate expiration: openssl x509 -in cert.pem -noout -dates</step>
+      </diagnosis>
+      <resolution>
+        <solution>Update TLS configuration to use compatible versions</solution>
+        <solution>Add missing intermediate certificates to chain</solution>
+        <solution>Renew expired certificates</solution>
+        <solution>Verify server name matches certificate CN/SAN</solution>
+      </resolution>
+    </issue>
+
+    <issue name="mtls_authentication_failure">
+      <symptoms>
+        <symptom>Client certificate required error</symptom>
+        <symptom>Certificate verification failed</symptom>
+        <symptom>Unknown CA error</symptom>
+      </symptoms>
+      <diagnosis>
+        <step>Verify client certificate is provided: curl --cert client.pem --key client-key.pem</step>
+        <step>Check certificate validity: openssl x509 -in client.pem -noout -dates</step>
+        <step>Verify certificate chain: openssl verify -CAfile ca.pem client.pem</step>
+        <step>Check certificate revocation status</step>
+      </diagnosis

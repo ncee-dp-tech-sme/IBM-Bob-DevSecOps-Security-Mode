@@ -1,0 +1,983 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<security_tools_usage_guide>
+  <overview>
+    Comprehensive guide for using security tools in the DevSecOps pipeline.
+    Covers installation, configuration, execution, and interpretation of results
+    for each tool in the 5-stage control model.
+  </overview>
+
+  <tool_categories>
+    <category name="static_analysis">
+      <tool name="Semgrep">
+        <description>
+          Fast, customizable static analysis tool for detecting security patterns
+          and anti-patterns in source code.
+        </description>
+
+        <installation>
+          <method name="pip">
+            <command>pip install semgrep</command>
+          </method>
+          <method name="homebrew">
+            <command>brew install semgrep</command>
+          </method>
+          <method name="docker">
+            <command>docker pull returntocorp/semgrep</command>
+          </method>
+        </installation>
+
+        <configuration>
+          <rules_directory>.semgrep/</rules_directory>
+          <custom_rules>
+            <rule_file>security-rules.yml</rule_file>
+            <rule_file>spring-security.yml</rule_file>
+            <rule_file>oauth-patterns.yml</rule_file>
+            <rule_file>tls-configuration.yml</rule_file>
+          </custom_rules>
+          <example_rule><![CDATA[
+rules:
+  - id: spring-ssl-bundle-usage
+    pattern: |
+      spring.ssl.bundle.$BUNDLE
+    message: |
+      SSL bundle configuration detected. Verify:
+      1. Certificate paths are correct
+      2. TLS versions are approved (1.2+)
+      3. Cipher suites are AEAD-based
+      4. Runtime validation is performed
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      technology: [spring-boot]
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      
+  - id: oauth-redirect-uri-validation
+    pattern-either:
+      - pattern: |
+          if ($URI.startsWith($REGISTERED)) { ... }
+      - pattern: |
+          if ($URI.contains($REGISTERED)) { ... }
+    message: |
+      Loose redirect URI validation detected. Use exact string matching only.
+      Loose matching enables open redirect vulnerabilities.
+    severity: ERROR
+    languages: [java, javascript, typescript]
+    metadata:
+      category: security
+      technology: [oauth2]
+      cwe: "CWE-601: URL Redirection to Untrusted Site"
+          ]]></example_rule>
+        </configuration>
+
+        <execution>
+          <basic_scan>
+            <command>semgrep --config=.semgrep/ .</command>
+            <description>Scan current directory with custom rules</description>
+          </basic_scan>
+
+          <ci_cd_scan>
+            <command>semgrep --config=.semgrep/ --json --output=semgrep-results.json .</command>
+            <description>JSON output for pipeline integration</description>
+          </ci_cd_scan>
+
+          <severity_filtering>
+            <command>semgrep --config=.semgrep/ --severity=ERROR --severity=WARNING .</command>
+            <description>Only show ERROR and WARNING findings</description>
+          </severity_filtering>
+
+          <specific_rules>
+            <command>semgrep --config=.semgrep/spring-security.yml src/</command>
+            <description>Run specific rule file on src directory</description>
+          </specific_rules>
+        </execution>
+
+        <result_interpretation>
+          <severity level="ERROR">
+            <action>Block build/merge</action>
+            <examples>
+              <example>Hardcoded secrets</example>
+              <example>SQL injection vulnerabilities</example>
+              <example>Insecure cryptographic usage</example>
+            </examples>
+          </severity>
+
+          <severity level="WARNING">
+            <action>Require review before merge</action>
+            <examples>
+              <example>Security abstractions requiring verification</example>
+              <example>Potential security misconfigurations</example>
+              <example>Deprecated security patterns</example>
+            </examples>
+          </severity>
+
+          <severity level="INFO">
+            <action>Log for awareness</action>
+            <examples>
+              <example>Security-relevant code patterns</example>
+              <example>Areas requiring documentation</example>
+            </examples>
+          </severity>
+        </result_interpretation>
+
+        <best_practices>
+          <practice>Create project-specific rule sets for your technology stack</practice>
+          <practice>Run Semgrep in CI/CD and as pre-commit hook</practice>
+          <practice>Regularly update rules from Semgrep Registry</practice>
+          <practice>Tune rules to reduce false positives</practice>
+          <practice>Document exceptions with inline comments</practice>
+        </best_practices>
+      </tool>
+
+      <tool name="Checkov">
+        <description>
+          Static analysis tool for Infrastructure-as-Code security and compliance.
+        </description>
+
+        <installation>
+          <method name="pip">
+            <command>pip install checkov</command>
+          </method>
+          <method name="homebrew">
+            <command>brew install checkov</command>
+          </method>
+          <method name="docker">
+            <command>docker pull bridgecrew/checkov</command>
+          </method>
+        </installation>
+
+        <execution>
+          <scan_directory>
+            <command>checkov -d . --framework kubernetes ansible dockerfile</command>
+            <description>Scan current directory for K8s, Ansible, and Dockerfile issues</description>
+          </scan_directory>
+
+          <json_output>
+            <command>checkov -d . --output json --output-file checkov-results.json</command>
+            <description>JSON output for automation</description>
+          </json_output>
+
+          <specific_checks>
+            <command>checkov -d . --check CKV_K8S_14,CKV_K8S_110</command>
+            <description>Run specific checks only</description>
+          </specific_checks>
+
+          <skip_checks>
+            <command>checkov -d . --skip-check CKV_K8S_43</command>
+            <description>Skip specific checks (with justification)</description>
+          </skip_checks>
+
+          <severity_threshold>
+            <command>checkov -d . --compact --quiet --framework kubernetes</command>
+            <description>Compact output, only show failures</description>
+          </severity_threshold>
+        </execution>
+
+        <custom_policies>
+          <policy_file>.checkov.yml</policy_file>
+          <example_policy><![CDATA[
+# .checkov.yml
+skip-check:
+  - CKV_K8S_43  # Image should use digest
+    # Justification: Using tags for development flexibility
+
+soft-fail-checks:
+  - CKV_K8S_14  # Image Tag should be fixed
+    # Justification: Allow in non-production environments
+
+framework:
+  - kubernetes
+  - ansible
+  - dockerfile
+
+output: json
+compact: true
+quiet: true
+          ]]></example_policy>
+        </custom_policies>
+
+        <result_interpretation>
+          <check_result status="PASSED">
+            <description>Configuration meets security standard</description>
+            <action>No action required</action>
+          </check_result>
+
+          <check_result status="FAILED">
+            <description>Security issue detected</description>
+            <action>Remediate or document exception</action>
+          </check_result>
+
+          <check_result status="SKIPPED">
+            <description>Check was skipped (via configuration)</description>
+            <action>Ensure skip is justified and documented</action>
+          </check_result>
+        </result_interpretation>
+
+        <best_practices>
+          <practice>Run Checkov on all IaC changes before merge</practice>
+          <practice>Maintain .checkov.yml for project-specific policies</practice>
+          <practice>Document all skipped checks with justification</practice>
+          <practice>Integrate with CI/CD to block on failures</practice>
+          <practice>Regularly review and update custom policies</practice>
+        </best_practices>
+      </tool>
+    </category>
+
+    <category name="cryptographic_analysis">
+      <tool name="IBM Quantum Safe Explorer">
+        <description>
+          Comprehensive cryptographic visibility and quantum risk assessment tool.
+          Essential for banking environments with strict cryptographic governance.
+        </description>
+
+        <installation>
+          <note>Installation details specific to IBM Quantum Safe Explorer licensing</note>
+          <deployment_options>
+            <option>On-premises installation</option>
+            <option>Container deployment</option>
+            <option>Cloud-based SaaS</option>
+          </deployment_options>
+        </installation>
+
+        <configuration>
+          <policy_file>qse-policy.json</policy_file>
+          <example_policy><![CDATA[
+{
+  "policy_name": "Banking Cryptographic Standards",
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "no-md5-sha1",
+      "severity": "CRITICAL",
+      "description": "Prohibit MD5 and SHA-1 for security purposes",
+      "condition": {
+        "algorithm": ["MD5", "SHA-1"],
+        "usage_context": ["signature", "integrity", "authentication"]
+      },
+      "action": "BLOCK"
+    },
+    {
+      "id": "minimum-rsa-key-size",
+      "severity": "CRITICAL",
+      "description": "RSA keys must be at least 2048 bits",
+      "condition": {
+        "algorithm": "RSA",
+        "key_size": {"less_than": 2048}
+      },
+      "action": "BLOCK"
+    },
+    {
+      "id": "prefer-aead-ciphers",
+      "severity": "HIGH",
+      "description": "Prefer AEAD cipher modes (GCM, CCM)",
+      "condition": {
+        "algorithm": ["AES-CBC", "AES-ECB"],
+        "mode": ["CBC", "ECB"]
+      },
+      "action": "WARN"
+    },
+    {
+      "id": "quantum-risk-assessment",
+      "severity": "MEDIUM",
+      "description": "Flag non-quantum-safe algorithms for long-term data",
+      "condition": {
+        "algorithm": ["RSA", "ECDSA", "DH", "ECDH"],
+        "data_lifetime": {"greater_than": "5 years"}
+      },
+      "action": "WARN"
+    }
+  ]
+}
+          ]]></example_policy>
+        </configuration>
+
+        <execution>
+          <scan_application>
+            <command>qse-scan --input target/myapp.jar --policy qse-policy.json --output qse-report.json</command>
+            <description>Scan Java application JAR file</description>
+          </scan_application>
+
+          <scan_container>
+            <command>qse-scan --input docker://myapp:latest --policy qse-policy.json --output qse-report.json</command>
+            <description>Scan container image</description>
+          </scan_container>
+
+          <scan_dependencies>
+            <command>qse-scan --input pom.xml --resolve-dependencies --policy qse-policy.json</command>
+            <description>Scan Maven dependencies</description>
+          </scan_dependencies>
+
+          <generate_sbom>
+            <command>qse-scan --input target/myapp.jar --output-sbom cyclonedx --output sbom.json</command>
+            <description>Generate cryptographic SBOM</description>
+          </generate_sbom>
+
+          <quantum_risk_report>
+            <command>qse-scan --input target/myapp.jar --quantum-risk-assessment --output quantum-risk.pdf</command>
+            <description>Generate quantum risk assessment report</description>
+          </quantum_risk_report>
+        </execution>
+
+        <result_interpretation>
+          <finding severity="CRITICAL">
+            <description>Prohibited algorithm or configuration detected</description>
+            <action>Block build immediately</action>
+            <examples>
+              <example>MD5 or SHA-1 usage for security</example>
+              <example>RSA keys smaller than 2048 bits</example>
+              <example>DES or 3DES encryption</example>
+            </examples>
+          </finding>
+
+          <finding severity="HIGH">
+            <description>Suboptimal cryptographic choice</description>
+            <action>Require security team approval</action>
+            <examples>
+              <example>CBC mode instead of GCM</example>
+              <example>RSA-2048 instead of RSA-3072</example>
+              <example>Deprecated library versions</example>
+            </examples>
+          </finding>
+
+          <finding severity="MEDIUM">
+            <description>Quantum risk or future concern</description>
+            <action>Track for future remediation</action>
+            <examples>
+              <example>Non-quantum-safe algorithms for long-term data</example>
+              <example>Missing migration path to post-quantum</example>
+            </examples>
+          </finding>
+
+          <finding severity="LOW">
+            <description>Informational finding</description>
+            <action>Document for awareness</action>
+            <examples>
+              <example>Algorithm usage statistics</example>
+              <example>Library version information</example>
+            </examples>
+          </finding>
+        </result_interpretation>
+
+        <integration_patterns>
+          <pattern name="ci_cd_gate">
+            <description>Block builds with CRITICAL findings</description>
+            <implementation><![CDATA[
+# Jenkins pipeline example
+stage('Cryptographic Analysis') {
+    steps {
+        sh 'qse-scan --input target/myapp.jar --policy qse-policy.json --output qse-report.json'
+        script {
+            def report = readJSON file: 'qse-report.json'
+            if (report.summary.critical > 0) {
+                error("CRITICAL cryptographic findings detected. Build blocked.")
+            }
+            if (report.summary.high > 0) {
+                input message: "HIGH severity findings detected. Approve to continue?"
+            }
+        }
+    }
+}
+            ]]></implementation>
+          </pattern>
+
+          <pattern name="continuous_monitoring">
+            <description>Track cryptographic posture over time</description>
+            <implementation>
+              Schedule weekly scans of production artifacts.
+              Store results in time-series database.
+              Generate trend reports and alerts.
+            </implementation>
+          </pattern>
+        </integration_patterns>
+
+        <best_practices>
+          <practice>Scan all builds before artifact creation</practice>
+          <practice>Maintain strict cryptographic policies</practice>
+          <practice>Track quantum risk exposure over time</practice>
+          <practice>Generate SBOMs for all releases</practice>
+          <practice>Integrate findings into vulnerability management</practice>
+        </best_practices>
+      </tool>
+    </category>
+
+    <category name="runtime_validation">
+      <tool name="testssl.sh">
+        <description>
+          Comprehensive TLS/SSL testing tool for validating endpoint security.
+        </description>
+
+        <installation>
+          <method name="git">
+            <command>git clone --depth 1 https://github.com/drwetter/testssl.sh.git</command>
+          </method>
+          <method name="docker">
+            <command>docker pull drwetter/testssl.sh</command>
+          </method>
+        </installation>
+
+        <execution>
+          <basic_scan>
+            <command>./testssl.sh https://api.example.com</command>
+            <description>Standard scan with all checks</description>
+          </basic_scan>
+
+          <json_output>
+            <command>./testssl.sh --jsonfile results.json https://api.example.com</command>
+            <description>JSON output for automation</description>
+          </json_output>
+
+          <severity_filtering>
+            <command>./testssl.sh --severity HIGH https://api.example.com</command>
+            <description>Only show HIGH and CRITICAL findings</description>
+          </severity_filtering>
+
+          <specific_tests>
+            <command>./testssl.sh --protocols --ciphers https://api.example.com</command>
+            <description>Test only protocols and ciphers</description>
+          </command>
+
+          <parallel_scanning>
+            <command>./testssl.sh --parallel --file endpoints.txt</command>
+            <description>Scan multiple endpoints concurrently</description>
+          </parallel_scanning>
+
+          <vulnerability_scan>
+            <command>./testssl.sh --vulnerable https://api.example.com</command>
+            <description>Check for known TLS vulnerabilities</description>
+          </vulnerability_scan>
+        </execution>
+
+        <result_interpretation>
+          <finding severity="CRITICAL">
+            <indicators>
+              <indicator>SSLv2 or SSLv3 enabled</indicator>
+              <indicator>NULL ciphers offered</indicator>
+              <indicator>Export-grade ciphers available</indicator>
+              <indicator>Certificate expired or invalid</indicator>
+            </indicators>
+            <action>Immediate remediation, consider rollback</action>
+          </finding>
+
+          <finding severity="HIGH">
+            <indicators>
+              <indicator>TLS 1.0 or 1.1 enabled</indicator>
+              <indicator>Weak ciphers (RC4, 3DES) offered</indicator>
+              <indicator>Missing Perfect Forward Secrecy</indicator>
+              <indicator>HSTS header not present</indicator>
+            </indicators>
+            <action>Remediate within 24 hours</action>
+          </finding>
+
+          <finding severity="MEDIUM">
+            <indicators>
+              <indicator>Suboptimal cipher order</indicator>
+              <indicator>Long certificate validity period</indicator>
+              <indicator>Missing OCSP stapling</indicator>
+            </indicators>
+            <action>Track for next deployment</action>
+          </finding>
+
+          <finding severity="OK">
+            <indicators>
+              <indicator>TLS 1.3 or 1.2 only</indicator>
+              <indicator>Strong AEAD ciphers</indicator>
+              <indicator>Valid certificate with proper chain</indicator>
+              <indicator>HSTS enabled</indicator>
+            </indicators>
+            <action>No action required</action>
+          </finding>
+        </result_interpretation>
+
+        <automation_example><![CDATA[
+#!/bin/bash
+# Automated TLS validation script
+
+ENDPOINTS=(
+    "https://api.example.com"
+    "https://app.example.com"
+    "https://admin.example.com"
+)
+
+RESULTS_DIR="tls-scan-results"
+mkdir -p "$RESULTS_DIR"
+
+for endpoint in "${ENDPOINTS[@]}"; do
+    echo "Scanning $endpoint..."
+    ./testssl.sh --jsonfile "$RESULTS_DIR/$(echo $endpoint | sed 's/[^a-zA-Z0-9]/_/g').json" \
+                 --severity HIGH \
+                 "$endpoint"
+done
+
+# Parse results and check for failures
+python3 << 'EOF'
+import json
+import glob
+import sys
+
+critical_found = False
+for file in glob.glob('tls-scan-results/*.json'):
+    with open(file) as f:
+        data = json.load(f)
+        for finding in data.get('scanResult', []):
+            if finding.get('severity') in ['CRITICAL', 'HIGH']:
+                print(f"FAILURE: {finding['id']} - {finding['finding']}")
+                critical_found = True
+
+sys.exit(1 if critical_found else 0)
+EOF
+        ]]></automation_example>
+
+        <best_practices>
+          <practice>Run testssl.sh after every deployment</practice>
+          <practice>Automate scanning with CI/CD integration</practice>
+          <practice>Store results for trend analysis</practice>
+          <practice>Alert on any HIGH or CRITICAL findings</practice>
+          <practice>Validate all public-facing TLS endpoints</practice>
+        </best_practices>
+      </tool>
+
+      <tool name="SSLyze">
+        <description>
+          Fast, Python-based TLS scanner with programmatic interface.
+        </description>
+
+        <installation>
+          <method name="pip">
+            <command>pip install sslyze</command>
+          </method>
+        </installation>
+
+        <execution>
+          <basic_scan>
+            <command>sslyze --regular api.example.com:443</command>
+            <description>Standard scan profile</description>
+          </basic_scan>
+
+          <json_output>
+            <command>sslyze --json_out=results.json --regular api.example.com:443</command>
+            <description>JSON output for automation</description>
+          </json_output>
+
+          <certificate_info>
+            <command>sslyze --certinfo api.example.com:443</command>
+            <description>Detailed certificate information</description>
+          </certificate_info>
+
+          <http_headers>
+            <command>sslyze --http_headers api.example.com:443</command>
+            <description>Check security headers (HSTS, etc.)</description>
+          </http_headers>
+
+          <multiple_hosts>
+            <command>sslyze --targets_in=endpoints.txt --json_out=results.json</command>
+            <description>Scan multiple hosts from file</description>
+          </multiple_hosts>
+        </execution>
+
+        <programmatic_usage><![CDATA[
+# Python script for automated TLS validation
+from sslyze import (
+    Scanner,
+    ServerScanRequest,
+    ServerNetworkLocation,
+    ScanCommand
+)
+import json
+
+def scan_endpoint(hostname, port=443):
+    # Create scanner
+    scanner = Scanner()
+    
+    # Define server to scan
+    server_location = ServerNetworkLocation(hostname, port)
+    scan_request = ServerScanRequest(
+        server_location=server_location,
+        scan_commands={
+            ScanCommand.CERTIFICATE_INFO,
+            ScanCommand.TLS_1_2_CIPHER_SUITES,
+            ScanCommand.TLS_1_3_CIPHER_SUITES,
+            ScanCommand.HTTP_HEADERS,
+        }
+    )
+    
+    # Queue scan
+    scanner.queue_scans([scan_request])
+    
+    # Get results
+    for result in scanner.get_results():
+        print(f"Scan results for {result.server_location.hostname}:")
+        
+        # Check certificate
+        cert_result = result.scan_result.certificate_info
+        if cert_result.result:
+            cert = cert_result.result.certificate_deployments[0]
+            print(f"  Certificate: {cert.received_certificate_chain[0].subject}")
+            print(f"  Valid until: {cert.received_certificate_chain[0].not_valid_after}")
+        
+        # Check TLS 1.3 support
+        tls13_result = result.scan_result.tls_1_3_cipher_suites
+        if tls13_result.result:
+            print(f"  TLS 1.3 supported: {len(tls13_result.result.accepted_cipher_suites)} ciphers")
+        
+        # Check HSTS
+        headers_result = result.scan_result.http_headers
+        if headers_result.result:
+            hsts = headers_result.result.strict_transport_security_header
+            print(f"  HSTS enabled: {hsts is not None}")
+
+if __name__ == "__main__":
+    scan_endpoint("api.example.com")
+        ]]></programmatic_usage>
+
+        <best_practices>
+          <practice>Use SSLyze for programmatic TLS validation</practice>
+          <practice>Integrate into Python-based CI/CD pipelines</practice>
+          <practice>Combine with testssl.sh for comprehensive coverage</practice>
+          <practice>Store results in structured format for analysis</practice>
+        </best_practices>
+      </tool>
+
+      <tool name="OWASP ZAP">
+        <description>
+          Dynamic Application Security Testing tool with OAuth support.
+        </description>
+
+        <installation>
+          <method name="download">
+            <url>https://www.zaproxy.org/download/</url>
+          </method>
+          <method name="docker">
+            <command>docker pull owasp/zap2docker-stable</command>
+          </method>
+        </installation>
+
+        <execution>
+          <baseline_scan>
+            <command>zap-baseline.py -t https://app.example.com -r baseline-report.html</command>
+            <description>Quick baseline scan</description>
+          </baseline_scan>
+
+          <full_scan>
+            <command>zap-full-scan.py -t https://app.example.com -r full-report.html</command>
+            <description>Comprehensive active scan</description>
+          </full_scan>
+
+          <api_scan>
+            <command>zap-api-scan.py -t https://api.example.com/openapi.json -f openapi -r api-report.html</command>
+            <description>API-specific scanning with OpenAPI spec</description>
+          </api_scan>
+
+          <authenticated_scan>
+            <command>zap-full-scan.py -t https://app.example.com -c zap-config.conf -r auth-report.html</command>
+            <description>Scan with authentication</description>
+          </authenticated_scan>
+        </execution>
+
+        <oauth_testing_configuration>
+          <config_file>zap-oauth-config.conf</config_file>
+          <example_config><![CDATA[
+# ZAP OAuth Configuration
+oauth2.client_id=your-client-id
+oauth2.client_secret=your-client-secret
+oauth2.authorization_url=https://auth.example.com/oauth/authorize
+oauth2.token_url=https://auth.example.com/oauth/token
+oauth2.redirect_uri=https://app.example.com/callback
+oauth2.scope=read write
+
+# Authentication script
+authentication.script=oauth2-auth.js
+          ]]></example_config>
+
+          <authentication_script><![CDATA[
+// oauth2-auth.js - ZAP authentication script
+function authenticate(helper, paramsValues, credentials) {
+    var authUrl = paramsValues.get("authorization_url");
+    var tokenUrl = paramsValues.get("token_url");
+    var clientId = paramsValues.get("client_id");
+    var clientSecret = paramsValues.get("client_secret");
+    
+    // Implement OAuth2 flow
+    // 1. Get authorization code
+    // 2. Exchange for access token
+    // 3. Set token in requests
+    
+    return true;
+}
+          ]]></authentication_script>
+        </oauth_testing_configuration>
+
+        <result_interpretation>
+          <alert risk="High">
+            <examples>
+              <example>SQL Injection</example>
+              <example>Cross-Site Scripting (XSS)</example>
+              <example>Insecure Authentication</example>
+              <example>OAuth misconfiguration</example>
+            </examples>
+            <action>Immediate remediation required</action>
+          </alert>
+
+          <alert risk="Medium">
+            <examples>
+              <example>Missing security headers</example>
+              <example>Weak session management</example>
+              <example>Information disclosure</example>
+            </examples>
+            <action>Remediate within sprint</action>
+          </alert>
+
+          <alert risk="Low">
+            <examples>
+              <example>Incomplete security headers</example>
+              <example>Minor information leakage</example>
+            </examples>
+            <action>Track for future improvement</action>
+          </alert>
+        </result_interpretation>
+
+        <best_practices>
+          <practice>Run ZAP scans on every deployment</practice>
+          <practice>Configure authentication for protected endpoints</practice>
+          <practice>Use API scan mode for REST APIs</practice>
+          <practice>Integrate with CI/CD for automated testing</practice>
+          <practice>Review and triage all findings</practice>
+        </best_practices>
+      </tool>
+    </category>
+
+    <category name="secrets_detection">
+      <tool name="git-secrets">
+        <description>
+          Prevents committing secrets to Git repositories.
+        </description>
+
+        <installation>
+          <method name="homebrew">
+            <command>brew install git-secrets</command>
+          </method>
+          <method name="manual">
+            <command>git clone https://github.com/awslabs/git-secrets.git && cd git-secrets && make install</command>
+          </method>
+        </installation>
+
+        <setup>
+          <step number="1">
+            <action>Install hooks in repository</action>
+            <command>git secrets --install</command>
+          </step>
+
+          <step number="2">
+            <action>Add patterns to detect</action>
+            <commands>
+              <command>git secrets --add 'BEGIN.*PRIVATE KEY'</command>
+              <command>git secrets --add 'password\s*=\s*["\'][^"\']+["\']'</command>
+              <command>git secrets --add 'api[_-]?key\s*=\s*["\'][^"\']+["\']'</command>
+            </commands>
+          </step>
+
+          <step number="3">
+            <action>Scan existing history</action>
+            <command>git secrets --scan-history</command>
+          </step>
+        </setup>
+
+        <execution>
+          <scan_staged>
+            <command>git secrets --scan</command>
+            <description>Scan staged changes (automatic in pre-commit hook)</description>
+          </scan_staged>
+
+          <scan_history>
+            <command>git secrets --scan-history</command>
+            <description>Scan entire Git history</description>
+          </scan_history>
+
+          <scan_specific_commit>
+            <command>git secrets --scan-history HEAD~10..HEAD</command>
+            <description>Scan last 10 commits</description>
+          </scan_specific_commit>
+        </execution>
+
+        <best_practices>
+          <practice>Install git-secrets in all repositories</practice>
+          <practice>Add project-specific secret patterns</practice>
+          <practice>Scan history before making repository public</practice>
+          <practice>Educate developers on secret management</practice>
+          <practice>Use secrets management tools (Vault, AWS Secrets Manager)</practice>
+        </best_practices>
+      </tool>
+
+      <tool name="TruffleHog">
+        <description>
+          Finds secrets in Git history using entropy analysis and regex.
+        </description>
+
+        <installation>
+          <method name="pip">
+            <command>pip install trufflehog</command>
+          </method>
+          <method name="docker">
+            <command>docker pull trufflesecurity/trufflehog</command>
+          </method>
+        </installation>
+
+        <execution>
+          <scan_repository>
+            <command>trufflehog git file://. --json --only-verified</command>
+            <description>Scan local repository, only show verified secrets</description>
+          </scan_repository>
+
+          <scan_remote>
+            <command>trufflehog git https://github.com/org/repo --json</command>
+            <description>Scan remote repository</description>
+          </scan_remote>
+
+          <scan_since_commit>
+            <command>trufflehog git file://. --since-commit HEAD~10</command>
+            <description>Scan last 10 commits</description>
+          </scan_since_commit>
+
+          <custom_regex>
+            <command>trufflehog git file://. --regex --rules=custom-rules.json</command>
+            <description>Use custom regex patterns</description>
+          </custom_regex>
+        </execution>
+
+        <custom_rules>
+          <rules_file>custom-rules.json</rules_file>
+          <example_rules><![CDATA[
+{
+  "rules": [
+    {
+      "description": "Private Key",
+      "regex": "-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----",
+      "tags": ["key", "private"]
+    },
+    {
+      "description": "OAuth Client Secret",
+      "regex": "client[_-]?secret[\"']?\\s*[:=]\\s*[\"']?([a-zA-Z0-9_\\-]{32,})",
+      "tags": ["oauth", "secret"]
+    },
+    {
+      "description": "Database Connection String",
+      "regex": "(postgres|mysql|mongodb)://[^\\s]+:[^\\s]+@[^\\s]+",
+      "tags": ["database", "credentials"]
+    }
+  ]
+}
+          ]]></example_rules>
+        </custom_rules>
+
+        <best_practices>
+          <practice>Run TruffleHog in CI/CD pipeline</practice>
+          <practice>Scan before making repositories public</practice>
+          <practice>Use --only-verified to reduce false positives</practice>
+          <practice>Create custom rules for project-specific secrets</practice>
+          <practice>Rotate any discovered secrets immediately</practice>
+        </best_practices>
+      </tool>
+    </category>
+  </tool_categories>
+
+  <tool_integration_patterns>
+    <pattern name="ci_cd_security_pipeline">
+      <description>Complete security tool integration in CI/CD</description>
+      <stages>
+        <stage name="pre-commit">
+          <tools>
+            <tool>git-secrets (automatic)</tool>
+            <tool>Semgrep (fast rules)</tool>
+          </tools>
+        </stage>
+
+        <stage name="pull_request">
+          <tools>
+            <tool>Semgrep (full scan)</tool>
+            <tool>Checkov (IaC scan)</tool>
+            <tool>TruffleHog (history scan)</tool>
+          </tools>
+        </stage>
+
+        <stage name="build">
+          <tools>
+            <tool>IBM Quantum Safe Explorer</tool>
+            <tool>Dependency vulnerability scanners</tool>
+          </tools>
+        </stage>
+
+        <stage name="pre-deployment">
+          <tools>
+            <tool>Configuration validators</tool>
+            <tool>Certificate validators</tool>
+            <tool>Container security scanners (Trivy)</tool>
+          </tools>
+        </stage>
+
+        <stage name="post-deployment">
+          <tools>
+            <tool>testssl.sh</tool>
+            <tool>SSLyze</tool>
+            <tool>OWASP ZAP</tool>
+          </tools>
+        </stage>
+
+        <stage name="continuous">
+          <tools>
+            <tool>testssl.sh (scheduled)</tool>
+            <tool>Certificate monitoring</tool>
+            <tool>Configuration drift detection</tool>
+          </tools>
+        </stage>
+      </stages>
+    </pattern>
+
+    <pattern name="security_findings_aggregation">
+      <description>Centralize findings from all tools</description>
+      <approach>
+        <step>Standardize output format (JSON)</step>
+        <step>Aggregate findings in central database</step>
+        <step>Deduplicate across tools</step>
+        <step>Prioritize by severity and exploitability</step>
+        <step>Track remediation status</step>
+        <step>Generate unified reports</step>
+      </approach>
+      <tools>
+        <tool>DefectDojo</tool>
+        <tool>Dependency-Track</tool>
+        <tool>Custom aggregation scripts</tool>
+      </tools>
+    </pattern>
+  </tool_integration_patterns>
+
+  <troubleshooting>
+    <issue name="false_positives">
+      <description>Security tools report false positives</description>
+      <solutions>
+        <solution>Tune tool configurations and rules</solution>
+        <solution>Add exceptions with justification</solution>
+        <solution>Use multiple tools for validation</solution>
+        <solution>Implement manual review process</solution>
+      </solutions>
+    </issue>
+
+    <issue name="performance_impact">
+      <description>Security scans slow down pipeline</description>
+      <solutions>
+        <solution>Run fast checks in pre-commit, comprehensive in CI</solution>
+        <solution>Use parallel scanning where possible</solution>
+        <solution>Cache scan results for unchanged code</solution>
+        <solution>Optimize scan scope (incremental scanning)</solution>
+      </solutions>
+    </issue>
+
+    <issue name="tool_maintenance">
+      <description>Keeping tools and rules up to date</description>
+      <solutions>
+        <solution>Automate tool updates in CI/CD</solution>
+        <solution>Subscribe to security tool release notes</solution>
+        <solution>Regularly review and update custom rules</solution>
+        <solution>Test tool updates in non-production first</solution>
+      </solutions>
+    </issue>
+  </troubleshooting>
+</security_tools_usage_guide>

@@ -1,0 +1,766 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<banking_compliance_requirements>
+  <overview>
+    Regulatory compliance requirements for DevSecOps security controls in
+    regulated banking environments. Maps technical controls to specific
+    regulatory obligations and audit requirements.
+  </overview>
+
+  <regulatory_frameworks>
+    <framework name="PCI DSS">
+      <full_name>Payment Card Industry Data Security Standard</full_name>
+      <version>4.0</version>
+      <applicability>
+        Organizations that store, process, or transmit cardholder data
+      </applicability>
+
+      <relevant_requirements>
+        <requirement id="2.2.7">
+          <title>System security parameters are configured to prevent misuse</title>
+          <mapping_to_controls>
+            <control>Control Point 1: Static analysis detects misconfigurations</control>
+            <control>Control Point 3: Deployment validation ensures secure parameters</control>
+            <control>Control Point 5: Continuous monitoring detects parameter drift</control>
+          </mapping_to_controls>
+          <evidence_required>
+            <evidence>Configuration baseline documentation</evidence>
+            <evidence>Scan results showing secure configurations</evidence>
+            <evidence>Change management records</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="4.2.1">
+          <title>Strong cryptography and security protocols implemented</title>
+          <mapping_to_controls>
+            <control>Control Point 2: Cryptographic visibility with IBM Quantum Safe Explorer</control>
+            <control>Control Point 4: Runtime TLS validation</control>
+          </mapping_to_controls>
+          <technical_requirements>
+            <requirement>TLS 1.2 minimum (TLS 1.3 preferred)</requirement>
+            <requirement>Strong cipher suites only</requirement>
+            <requirement>Proper certificate management</requirement>
+          </technical_requirements>
+          <evidence_required>
+            <evidence>Cryptographic inventory reports</evidence>
+            <evidence>TLS scan results (testssl.sh, SSLyze)</evidence>
+            <evidence>Certificate management procedures</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="6.2.4">
+          <title>Software engineering techniques to prevent security vulnerabilities</title>
+          <mapping_to_controls>
+            <control>Control Point 1: Shift-left security with Semgrep</control>
+            <control>Control Point 2: Cryptographic policy enforcement</control>
+            <control>Control Point 4: DAST with OWASP ZAP</control>
+          </mapping_to_controls>
+          <evidence_required>
+            <evidence>SDLC documentation with security gates</evidence>
+            <evidence>Static analysis scan results</evidence>
+            <evidence>Dynamic testing results</evidence>
+            <evidence>Vulnerability remediation tracking</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="6.3.2">
+          <title>Inventory of bespoke and custom software</title>
+          <mapping_to_controls>
+            <control>Control Point 2: Software Bill of Materials (SBOM) generation</control>
+          </mapping_to_controls>
+          <evidence_required>
+            <evidence>Complete software inventory</evidence>
+            <evidence>Cryptographic SBOM</evidence>
+            <evidence>Dependency tracking</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="11.3.1">
+          <title>External penetration testing performed</title>
+          <mapping_to_controls>
+            <control>Control Point 4: Runtime security validation</control>
+          </mapping_to_controls>
+          <testing_requirements>
+            <requirement>Annual penetration testing</requirement>
+            <requirement>Testing after significant changes</requirement>
+            <requirement>Testing by qualified assessor</requirement>
+          </testing_requirements>
+          <evidence_required>
+            <evidence>Penetration test reports</evidence>
+            <evidence>Remediation evidence</evidence>
+            <evidence>Retest results</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="12.3.1">
+          <title>Security policies and procedures documented</title>
+          <mapping_to_controls>
+            <control>All control points: Documented procedures and baselines</control>
+          </mapping_to_controls>
+          <documentation_required>
+            <document>Cryptographic standards policy</document>
+            <document>TLS/mTLS configuration standards</document>
+            <document>OAuth security requirements</document>
+            <document>Certificate management procedures</document>
+            <document>Security testing procedures</document>
+          </documentation_required>
+        </requirement>
+      </relevant_requirements>
+
+      <audit_preparation>
+        <evidence_package>
+          <item>Security control implementation documentation</item>
+          <item>Scan results from all 5 control points</item>
+          <item>Configuration baselines and standards</item>
+          <item>Change management records</item>
+          <item>Incident response records</item>
+          <item>Training records for security team</item>
+        </evidence_package>
+        <common_findings>
+          <finding>Weak TLS configurations</finding>
+          <finding>Insufficient cryptographic controls</finding>
+          <finding>Inadequate security testing</finding>
+          <finding>Missing documentation</finding>
+        </common_findings>
+      </audit_preparation>
+    </framework>
+
+    <framework name="SOX">
+      <full_name>Sarbanes-Oxley Act</full_name>
+      <applicability>
+        Public companies and their IT systems supporting financial reporting
+      </applicability>
+
+      <relevant_requirements>
+        <requirement id="Section 302">
+          <title>Corporate responsibility for financial reports</title>
+          <it_implications>
+            IT controls must ensure accuracy and reliability of financial data
+          </it_implications>
+          <mapping_to_controls>
+            <control>Control Point 3: Deployment validation prevents unauthorized changes</control>
+            <control>Control Point 5: Configuration drift detection</control>
+          </mapping_to_controls>
+          <evidence_required>
+            <evidence>IT general controls documentation</evidence>
+            <evidence>Change management audit trail</evidence>
+            <evidence>Access control records</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="Section 404">
+          <title>Management assessment of internal controls</title>
+          <it_implications>
+            IT controls must be documented, tested, and assessed annually
+          </it_implications>
+          <mapping_to_controls>
+            <control>All control points: Documented and tested controls</control>
+          </mapping_to_controls>
+          <control_testing>
+            <test>Design effectiveness: Controls are properly designed</test>
+            <test>Operating effectiveness: Controls operate as designed</test>
+            <test>Evidence: Documented proof of control execution</test>
+          </control_testing>
+          <evidence_required>
+            <evidence>Control documentation (policies, procedures)</evidence>
+            <evidence>Control testing results</evidence>
+            <evidence>Deficiency remediation tracking</evidence>
+            <evidence>Management assessment report</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="ITGC - Change Management">
+          <title>IT General Controls - Change Management</title>
+          <control_objectives>
+            <objective>All changes are authorized, tested, and documented</objective>
+            <objective>Emergency changes have compensating controls</objective>
+            <objective>Segregation of duties is maintained</objective>
+          </control_objectives>
+          <mapping_to_controls>
+            <control>Control Point 1: Pre-deployment security validation</control>
+            <control>Control Point 3: Deployment validation and approval</control>
+            <control>Control Point 5: Change tracking and audit trail</control>
+          </mapping_to_controls>
+          <evidence_required>
+            <evidence>Change tickets with approvals</evidence>
+            <evidence>Testing evidence (security scans)</evidence>
+            <evidence>Deployment logs</evidence>
+            <evidence>Rollback procedures and tests</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="ITGC - Access Controls">
+          <title>IT General Controls - Access Controls</title>
+          <control_objectives>
+            <objective>Access is granted based on least privilege</objective>
+            <objective>Access reviews performed regularly</objective>
+            <objective>Privileged access is monitored</objective>
+          </control_objectives>
+          <mapping_to_controls>
+            <control>OAuth implementation with proper scope management</control>
+            <control>mTLS for service-to-service authentication</control>
+            <control>Certificate-based authorization</control>
+          </mapping_to_controls>
+        </requirement>
+      </relevant_requirements>
+
+      <audit_preparation>
+        <walkthrough_preparation>
+          <step>Document all security controls and their objectives</step>
+          <step>Prepare evidence of control design</step>
+          <step>Demonstrate control execution</step>
+          <step>Show audit trail and logging</step>
+        </walkthrough_preparation>
+        <testing_preparation>
+          <step>Select sample of changes for testing</step>
+          <step>Gather evidence for each sample</step>
+          <step>Document any exceptions or deficiencies</step>
+          <step>Prepare remediation plans</step>
+        </testing_preparation>
+      </audit_preparation>
+    </framework>
+
+    <framework name="GDPR">
+      <full_name>General Data Protection Regulation</full_name>
+      <applicability>
+        Organizations processing personal data of EU residents
+      </applicability>
+
+      <relevant_requirements>
+        <requirement id="Article 32">
+          <title>Security of processing</title>
+          <technical_measures>
+            <measure>Encryption of personal data in transit and at rest</measure>
+            <measure>Ability to ensure ongoing confidentiality and integrity</measure>
+            <measure>Ability to restore availability after incident</measure>
+            <measure>Regular testing and assessment of security measures</measure>
+          </technical_measures>
+          <mapping_to_controls>
+            <control>Control Point 2: Cryptographic visibility ensures proper encryption</control>
+            <control>Control Point 4: Runtime validation of TLS/mTLS</control>
+            <control>Control Point 5: Continuous security monitoring</control>
+          </mapping_to_controls>
+          <evidence_required>
+            <evidence>Encryption implementation documentation</evidence>
+            <evidence>Key management procedures</evidence>
+            <evidence>Security testing results</evidence>
+            <evidence>Incident response procedures</evidence>
+          </evidence_required>
+        </requirement>
+
+        <requirement id="Article 25">
+          <title>Data protection by design and by default</title>
+          <principles>
+            <principle>Privacy considerations from the start of development</principle>
+            <principle>Default settings provide highest privacy protection</principle>
+            <principle>Minimize data collection and processing</principle>
+          </principles>
+          <mapping_to_controls>
+            <control>Control Point 1: Shift-left security in development</control>
+            <control>OAuth scope management (least privilege)</control>
+          </mapping_to_controls>
+        </requirement>
+
+        <requirement id="Article 33">
+          <title>Notification of personal data breach</title>
+          <requirements>
+            <requirement>Detect breaches promptly</requirement>
+            <requirement>Notify supervisory authority within 72 hours</requirement>
+            <requirement>Document all breaches</requirement>
+          </requirements>
+          <mapping_to_controls>
+            <control>Control Point 5: Continuous monitoring for security incidents</control>
+            <control>Alerting and escalation procedures</control>
+          </mapping_to_controls>
+        </requirement>
+      </relevant_requirements>
+
+      <audit_preparation>
+        <documentation_required>
+          <document>Data protection impact assessment (DPIA)</document>
+          <document>Records of processing activities</document>
+          <document>Security measures documentation</document>
+          <document>Breach notification procedures</document>
+          <document>Data subject rights procedures</document>
+        </documentation_required>
+      </audit_preparation>
+    </framework>
+
+    <framework name="NIST Cybersecurity Framework">
+      <full_name>NIST Cybersecurity Framework</full_name>
+      <version>2.0</version>
+      <applicability>
+        Voluntary framework widely adopted by financial institutions
+      </applicability>
+
+      <core_functions>
+        <function name="Identify">
+          <categories>
+            <category id="ID.AM">Asset Management</category>
+            <category id="ID.RA">Risk Assessment</category>
+          </categories>
+          <mapping_to_controls>
+            <control>Control Point 2: Cryptographic inventory (asset management)</control>
+            <control>Control Point 2: Quantum risk assessment</control>
+          </mapping_to_controls>
+        </function>
+
+        <function name="Protect">
+          <categories>
+            <category id="PR.DS">Data Security</category>
+            <category id="PR.AC">Identity Management and Access Control</category>
+          </categories>
+          <mapping_to_controls>
+            <control>Control Point 2: Cryptographic controls</control>
+            <control>Control Point 4: TLS/mTLS validation</control>
+            <control>OAuth 2.0 implementation</control>
+          </mapping_to_controls>
+        </function>
+
+        <function name="Detect">
+          <categories>
+            <category id="DE.CM">Security Continuous Monitoring</category>
+            <category id="DE.AE">Anomalies and Events</category>
+          </categories>
+          <mapping_to_controls>
+            <control>Control Point 5: Continuous compliance monitoring</control>
+            <control>Control Point 5: Configuration drift detection</control>
+          </mapping_to_controls>
+        </function>
+
+        <function name="Respond">
+          <categories>
+            <category id="RS.AN">Analysis</category>
+            <category id="RS.MI">Mitigation</category>
+          </categories>
+          <mapping_to_controls>
+            <control>Alerting and escalation procedures</control>
+            <control>Incident response integration</control>
+          </mapping_to_controls>
+        </function>
+
+        <function name="Recover">
+          <categories>
+            <category id="RC.RP">Recovery Planning</category>
+          </categories>
+          <mapping_to_controls>
+            <control>Rollback procedures</control>
+            <control>Certificate renewal automation</control>
+          </mapping_to_controls>
+        </function>
+      </core_functions>
+    </framework>
+
+    <framework name="ISO 27001">
+      <full_name>Information Security Management System</full_name>
+      <applicability>
+        International standard for information security management
+      </applicability>
+
+      <relevant_controls>
+        <control id="A.8.24">
+          <title>Use of cryptography</title>
+          <requirements>
+            <requirement>Policy on cryptographic controls</requirement>
+            <requirement>Key management procedures</requirement>
+            <requirement>Approved cryptographic algorithms</requirement>
+          </requirements>
+          <mapping_to_controls>
+            <control>Control Point 2: Cryptographic visibility and policy enforcement</control>
+          </mapping_to_controls>
+        </control>
+
+        <control id="A.8.9">
+          <title>Configuration management</title>
+          <requirements>
+            <requirement>Configuration baselines established</requirement>
+            <requirement>Changes controlled and documented</requirement>
+            <requirement>Configuration verification</requirement>
+          </requirements>
+          <mapping_to_controls>
+            <control>Control Point 3: Deployment validation</control>
+            <control>Control Point 5: Configuration drift detection</control>
+          </mapping_to_controls>
+        </control>
+
+        <control id="A.8.8">
+          <title>Management of technical vulnerabilities</title>
+          <requirements>
+            <requirement>Vulnerability identification</requirement>
+            <requirement>Risk assessment of vulnerabilities</requirement>
+            <requirement>Timely patching and remediation</requirement>
+          </requirements>
+          <mapping_to_controls>
+            <control>Control Point 1: Static analysis</control>
+            <control>Control Point 4: Dynamic testing</control>
+            <control>Control Point 5: Vulnerability monitoring</control>
+          </mapping_to_controls>
+        </control>
+      </relevant_controls>
+    </framework>
+
+    <framework name="FFIEC">
+      <full_name>Federal Financial Institutions Examination Council</full_name>
+      <applicability>
+        US financial institutions and their service providers
+      </applicability>
+
+      <relevant_guidance>
+        <guidance name="Authentication and Access Control">
+          <requirements>
+            <requirement>Multi-factor authentication for high-risk transactions</requirement>
+            <requirement>Strong cryptography for authentication</requirement>
+            <requirement>Regular review of access rights</requirement>
+          </requirements>
+          <mapping_to_controls>
+            <control>OAuth 2.0 with PKCE</control>
+            <control>mTLS for service authentication</control>
+            <control>Certificate-based authorization</control>
+          </mapping_to_controls>
+        </guidance>
+
+        <guidance name="Encryption">
+          <requirements>
+            <requirement>Encryption for data in transit</requirement>
+            <requirement>Strong encryption algorithms</requirement>
+            <requirement>Proper key management</requirement>
+          </requirements>
+          <mapping_to_controls>
+            <control>Control Point 2: Cryptographic standards enforcement</control>
+            <control>Control Point 4: TLS validation</control>
+          </mapping_to_controls>
+        </guidance>
+
+        <guidance name="Vulnerability Management">
+          <requirements>
+            <requirement>Regular vulnerability assessments</requirement>
+            <requirement>Timely patching</requirement>
+            <requirement>Penetration testing</requirement>
+          </requirements>
+          <mapping_to_controls>
+            <control>All 5 control points provide vulnerability detection</control>
+          </mapping_to_controls>
+        </guidance>
+      </relevant_guidance>
+    </framework>
+  </regulatory_frameworks>
+
+  <compliance_mapping_matrix>
+    <control_point id="1" name="Static Analysis">
+      <regulatory_mappings>
+        <mapping framework="PCI DSS" requirement="6.2.4" />
+        <mapping framework="SOX" requirement="ITGC Change Management" />
+        <mapping framework="GDPR" requirement="Article 25" />
+        <mapping framework="NIST CSF" function="Protect" />
+        <mapping framework="ISO 27001" control="A.8.8" />
+      </regulatory_mappings>
+    </control_point>
+
+    <control_point id="2" name="Cryptographic Visibility">
+      <regulatory_mappings>
+        <mapping framework="PCI DSS" requirement="4.2.1, 6.3.2" />
+        <mapping framework="GDPR" requirement="Article 32" />
+        <mapping framework="NIST CSF" function="Identify, Protect" />
+        <mapping framework="ISO 27001" control="A.8.24" />
+        <mapping framework="FFIEC" guidance="Encryption" />
+      </regulatory_mappings>
+    </control_point>
+
+    <control_point id="3" name="Deployment Validation">
+      <regulatory_mappings>
+        <mapping framework="PCI DSS" requirement="2.2.7" />
+        <mapping framework="SOX" requirement="ITGC Change Management" />
+        <mapping framework="ISO 27001" control="A.8.9" />
+      </regulatory_mappings>
+    </control_point>
+
+    <control_point id="4" name="Runtime Verification">
+      <regulatory_mappings>
+        <mapping framework="PCI DSS" requirement="4.2.1, 11.3.1" />
+        <mapping framework="GDPR" requirement="Article 32" />
+        <mapping framework="NIST CSF" function="Detect" />
+        <mapping framework="ISO 27001" control="A.8.8" />
+        <mapping framework="FFIEC" guidance="Vulnerability Management" />
+      </regulatory_mappings>
+    </control_point>
+
+    <control_point id="5" name="Continuous Compliance">
+      <regulatory_mappings>
+        <mapping framework="PCI DSS" requirement="2.2.7" />
+        <mapping framework="SOX" requirement="Section 404" />
+        <mapping framework="GDPR" requirement="Article 32, 33" />
+        <mapping framework="NIST CSF" function="Detect, Respond" />
+        <mapping framework="ISO 27001" control="A.8.9" />
+      </regulatory_mappings>
+    </control_point>
+  </compliance_mapping_matrix>
+
+  <audit_readiness>
+    <preparation_checklist>
+      <category name="documentation">
+        <item>Security policies and standards documented</item>
+        <item>Control procedures documented</item>
+        <item>Architecture diagrams with security controls</item>
+        <item>Data flow diagrams showing encryption</item>
+        <item>Risk assessments completed</item>
+      </category>
+
+      <category name="evidence">
+        <item>Scan results from all control points</item>
+        <item>Configuration baselines</item>
+        <item>Change management records</item>
+        <item>Incident response records</item>
+        <item>Training records</item>
+        <item>Vendor assessments (for third-party tools)</item>
+      </category>
+
+      <category name="testing">
+        <item>Control testing results</item>
+        <item>Penetration test reports</item>
+        <item>Vulnerability scan results</item>
+        <item>Remediation tracking</item>
+      </category>
+
+      <category name="continuous_compliance">
+        <item>Monitoring dashboards</item>
+        <item>Alert logs and response times</item>
+        <item>Certificate inventory and expiration tracking</item>
+        <item>Configuration drift reports</item>
+      </category>
+    </preparation_checklist>
+
+    <evidence_retention>
+      <retention_periods>
+        <period type="PCI DSS">Minimum 1 year, 3 months immediately available</period>
+        <period type="SOX">Minimum 7 years</period>
+        <period type="GDPR">As required by national law, typically 3-7 years</period>
+        <period type="General">Recommend 7 years for all security evidence</period>
+      </retention_periods>
+      <storage_requirements>
+        <requirement>Immutable storage (WORM - Write Once Read Many)</requirement>
+        <requirement>Encrypted at rest</requirement>
+        <requirement>Access controls and audit logging</requirement>
+        <requirement>Regular backup and disaster recovery</requirement>
+      </storage_requirements>
+    </evidence_retention>
+
+    <common_audit_questions>
+      <question category="cryptography">
+        <q>How do you ensure only approved cryptographic algorithms are used?</q>
+        <answer>
+          Control Point 2 uses IBM Quantum Safe Explorer to inventory all
+          cryptographic usage and enforce policy gates that block builds
+          with prohibited algorithms.
+        </answer>
+        <evidence>
+          <item>Cryptographic policy document</item>
+          <item>QSE scan results</item>
+          <item>Build gate logs showing blocks</item>
+        </evidence>
+      </question>
+
+      <question category="tls_configuration">
+        <q>How do you verify TLS configurations in production?</q>
+        <answer>
+          Control Point 4 performs runtime validation using testssl.sh and
+          SSLyze immediately after deployment and continuously every 4 hours.
+        </answer>
+        <evidence>
+          <item>TLS scan results</item>
+          <item>Scan schedule and execution logs</item>
+          <item>Remediation tracking for findings</item>
+        </evidence>
+      </question>
+
+      <question category="change_management">
+        <q>How do you ensure security is validated before deployment?</q>
+        <answer>
+          Multi-stage validation: Control Point 1 (static analysis), Control
+          Point 2 (cryptographic analysis), Control Point 3 (deployment
+          validation). Builds are blocked if critical findings exist.
+        </answer>
+        <evidence>
+          <item>CI/CD pipeline configuration</item>
+          <item>Gate decision logs</item>
+          <item>Approval workflows</item>
+        </evidence>
+      </question>
+
+      <question category="monitoring">
+        <q>How do you detect unauthorized configuration changes?</q>
+        <answer>
+          Control Point 5 implements configuration drift detection through
+          file integrity monitoring, periodic snapshots, and GitOps
+          reconciliation. Alerts trigger within minutes of unauthorized changes.
+        </answer>
+        <evidence>
+          <item>Drift detection configuration</item>
+          <item>Alert logs</item>
+          <item>Incident response records</item>
+        </evidence>
+      </question>
+
+      <question category="certificate_management">
+        <q>How do you prevent certificate expiration outages?</q>
+        <answer>
+          Control Point 5 monitors all certificates daily with alerts at 60,
+          30, 14, and 7 days before expiration. Automated renewal is
+          implemented where possible.
+        </answer>
+        <evidence>
+          <item>Certificate inventory</item>
+          <item>Monitoring configuration</item>
+          <item>Alert history</item>
+          <item>Renewal procedures</item>
+        </evidence>
+      </question>
+    </common_audit_questions>
+  </audit_readiness>
+
+  <compliance_reporting>
+    <report_templates>
+      <template name="executive_compliance_summary">
+        <frequency>Quarterly</frequency>
+        <audience>CISO, Board of Directors, Audit Committee</audience>
+        <sections>
+          <section>Overall compliance posture</section>
+          <section>Control effectiveness metrics</section>
+          <section>Key risk indicators</section>
+          <section>Regulatory changes and impact</section>
+          <section>Audit findings and remediation status</section>
+          <section>Strategic recommendations</section>
+        </sections>
+      </template>
+
+      <template name="control_attestation_report">
+        <frequency>Annual (SOX), On-demand (audits)</frequency>
+        <audience>External auditors, regulators</audience>
+        <sections>
+          <section>Control objectives and design</section>
+          <section>Control testing methodology</section>
+          <section>Testing results and evidence</section>
+          <section>Deficiencies and remediation</section>
+          <section>Management assertion</section>
+        </sections>
+      </template>
+
+      <template name="cryptographic_compliance_report">
+        <frequency>Monthly</frequency>
+        <audience>Security team, compliance team</audience>
+        <sections>
+          <section>Cryptographic inventory</section>
+          <section>Policy compliance status</section>
+          <section>Prohibited algorithm usage (should be zero)</section>
+          <section>Quantum risk exposure</section>
+          <section>Remediation tracking</section>
+        </sections>
+      </template>
+    </report_templates>
+
+    <metrics_and_kpis>
+      <metric name="control_effectiveness_rate">
+        <calculation>
+          (Number of controls operating effectively / Total controls) × 100
+        </calculation>
+        <target>≥ 95%</target>
+        <reporting_frequency>Monthly</reporting_frequency>
+      </metric>
+
+      <metric name="critical_finding_remediation_time">
+        <calculation>
+          Average time from detection to remediation for CRITICAL findings
+        </calculation>
+        <target>≤ 24 hours</target>
+        <reporting_frequency>Weekly</reporting_frequency>
+      </metric>
+
+      <metric name="cryptographic_policy_compliance">
+        <calculation>
+          (Builds passing cryptographic policy / Total builds) × 100
+        </calculation>
+        <target>100%</target>
+        <reporting_frequency>Weekly</reporting_frequency>
+      </metric>
+
+      <metric name="tls_configuration_compliance">
+        <calculation>
+          (Endpoints passing TLS validation / Total endpoints) × 100
+        </calculation>
+        <target>100%</target>
+        <reporting_frequency>Daily</reporting_frequency>
+      </metric>
+
+      <metric name="certificate_expiration_risk">
+        <calculation>
+          Number of certificates expiring within 30 days
+        </calculation>
+        <target>0</target>
+        <reporting_frequency>Daily</reporting_frequency>
+      </metric>
+
+      <metric name="configuration_drift_incidents">
+        <calculation>
+          Number of unauthorized configuration changes detected
+        </calculation>
+        <target>0</target>
+        <reporting_frequency>Weekly</reporting_frequency>
+      </metric>
+
+      <metric name="audit_readiness_score">
+        <calculation>
+          Composite score based on documentation, evidence, and testing
+        </calculation>
+        <target>≥ 90%</target>
+        <reporting_frequency>Quarterly</reporting_frequency>
+      </metric>
+    </metrics_and_kpis>
+  </compliance_reporting>
+
+  <regulatory_change_management>
+    <monitoring_sources>
+      <source>PCI Security Standards Council updates</source>
+      <source>NIST publications and updates</source>
+      <source>ISO standard revisions</source>
+      <source>GDPR guidance from supervisory authorities</source>
+      <source>FFIEC guidance updates</source>
+      <source>Industry working groups and forums</source>
+    </monitoring_sources>
+
+    <impact_assessment_process>
+      <step>Identify regulatory change</step>
+      <step>Assess applicability to organization</step>
+      <step>Analyze gap between current and required state</step>
+      <step>Develop remediation plan</step>
+      <step>Implement changes</step>
+      <step>Validate compliance</step>
+      <step>Update documentation</step>
+    </impact_assessment_process>
+
+    <recent_changes>
+      <change>
+        <regulation>PCI DSS v4.0</regulation>
+        <effective_date>March 2024 (full compliance by March 2025)</effective_date>
+        <key_changes>
+          <change>Enhanced multi-factor authentication requirements</change>
+          <change>Expanded scope for encryption</change>
+          <change>New requirements for bespoke software inventory</change>
+        </key_changes>
+        <impact_on_controls>
+          Control Point 2 (SBOM generation) directly addresses new requirement 6.3.2
+        </impact_on_controls>
+      </change>
+
+      <change>
+        <regulation>NIST Post-Quantum Cryptography Standards</regulation>
+        <effective_date>2024 (standards published)</effective_date>
+        <key_changes>
+          <change>CRYSTALS-Kyber for key encapsulation</change>
+          <change>CRYSTALS-Dilithium for digital signatures</change>
+          <change>Migration guidance for quantum-vulnerable algorithms</change>
+        </key_changes>
+        <impact_on_controls>
+          Control Point 2 (quantum risk assessment) helps plan migration
+        </impact_on_controls>
+      </change>
+    </recent_changes>
+  </regulatory_change_management>
+</banking_compliance_requirements>

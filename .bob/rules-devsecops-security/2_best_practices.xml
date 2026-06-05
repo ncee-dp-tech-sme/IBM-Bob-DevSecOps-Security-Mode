@@ -1,0 +1,843 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<devsecops_best_practices>
+  <overview>
+    Security best practices for implementing TLS/mTLS/OAuth in regulated banking
+    environments. These practices eliminate hidden risks from framework abstractions
+    while maintaining development velocity and ensuring compliance.
+  </overview>
+
+  <tls_mtls_best_practices>
+    <category name="protocol_versions">
+      <practice priority="critical">
+        <rule>Use TLS 1.3 as the preferred protocol version</rule>
+        <rationale>
+          TLS 1.3 provides improved security, performance, and removes legacy
+          cryptographic algorithms. It's the current industry standard.
+        </rationale>
+        <implementation>
+          <good>
+            # nginx configuration
+            ssl_protocols TLSv1.3 TLSv1.2;
+            ssl_prefer_server_ciphers off;
+          </good>
+          <bad>
+            # Allowing weak protocols
+            ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+          </bad>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>TLS 1.2 is the minimum acceptable version for legacy compatibility</rule>
+        <rationale>
+          TLS 1.0 and 1.1 are deprecated and have known vulnerabilities.
+          Banking regulations typically prohibit their use.
+        </rationale>
+        <exceptions>
+          Only allow TLS 1.2 when TLS 1.3 compatibility issues exist with
+          legacy systems. Document and track these exceptions.
+        </exceptions>
+      </practice>
+
+      <practice priority="high">
+        <rule>Disable SSL 2.0 and SSL 3.0 completely</rule>
+        <rationale>
+          These protocols have critical vulnerabilities (POODLE, DROWN) and
+          must never be enabled.
+        </rationale>
+      </practice>
+    </category>
+
+    <category name="cipher_suites">
+      <practice priority="critical">
+        <rule>Use only AEAD cipher suites (GCM, ChaCha20-Poly1305)</rule>
+        <rationale>
+          Authenticated Encryption with Associated Data (AEAD) provides both
+          confidentiality and integrity in a single operation.
+        </rationale>
+        <approved_ciphers>
+          <cipher>TLS_AES_256_GCM_SHA384 (TLS 1.3)</cipher>
+          <cipher>TLS_AES_128_GCM_SHA256 (TLS 1.3)</cipher>
+          <cipher>TLS_CHACHA20_POLY1305_SHA256 (TLS 1.3)</cipher>
+          <cipher>ECDHE-RSA-AES256-GCM-SHA384 (TLS 1.2)</cipher>
+          <cipher>ECDHE-RSA-AES128-GCM-SHA256 (TLS 1.2)</cipher>
+        </approved_ciphers>
+        <implementation>
+          <good>
+            # nginx TLS 1.3 + 1.2 configuration
+            ssl_ciphers 'ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256';
+            ssl_protocols TLSv1.3 TLSv1.2;
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Disable CBC mode cipher suites</rule>
+        <rationale>
+          CBC mode is vulnerable to padding oracle attacks (BEAST, Lucky13).
+          AEAD modes are superior.
+        </rationale>
+        <prohibited_ciphers>
+          <cipher>Any cipher with CBC in the name</cipher>
+          <cipher>DES, 3DES, RC4</cipher>
+          <cipher>Export-grade ciphers</cipher>
+          <cipher>NULL ciphers</cipher>
+          <cipher>Anonymous DH (aNULL)</cipher>
+        </prohibited_ciphers>
+      </practice>
+
+      <practice priority="high">
+        <rule>Enable Perfect Forward Secrecy (PFS)</rule>
+        <rationale>
+          PFS ensures that session keys cannot be compromised even if the
+          server's private key is later compromised.
+        </rationale>
+        <implementation>
+          Use ECDHE (Elliptic Curve Diffie-Hellman Ephemeral) key exchange.
+          Avoid static RSA key exchange.
+        </implementation>
+      </practice>
+    </category>
+
+    <category name="certificate_management">
+      <practice priority="critical">
+        <rule>Use certificates from trusted Certificate Authorities only</rule>
+        <rationale>
+          Self-signed certificates are acceptable only in development/testing.
+          Production must use trusted CAs for client trust and compliance.
+        </rationale>
+        <approved_cas>
+          <ca>DigiCert</ca>
+          <ca>Let's Encrypt (for non-critical services)</ca>
+          <ca>GlobalSign</ca>
+          <ca>Sectigo</ca>
+          <ca>Internal Enterprise CA (for mTLS)</ca>
+        </approved_cas>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Minimum RSA key size of 2048 bits, prefer 3072 or 4096 bits</rule>
+        <rationale>
+          2048-bit RSA is the current minimum standard. 3072+ bits provides
+          better long-term security and quantum resistance.
+        </rationale>
+        <key_recommendations>
+          <recommendation>RSA 3072-bit for new certificates</recommendation>
+          <recommendation>ECDSA P-256 or P-384 for performance-critical services</recommendation>
+          <recommendation>Plan migration to post-quantum algorithms</recommendation>
+        </key_recommendations>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Certificate validity period maximum 397 days (13 months)</rule>
+        <rationale>
+          Industry standard (CA/Browser Forum) limits certificate lifetime.
+          Shorter lifetimes reduce exposure window if compromised.
+        </rationale>
+        <automation>
+          Implement automated certificate renewal at least 30 days before expiration.
+        </automation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Implement certificate pinning for critical services</rule>
+        <rationale>
+          Prevents man-in-the-middle attacks using rogue certificates.
+          Essential for mobile apps and high-security APIs.
+        </rationale>
+        <implementation>
+          Pin to intermediate CA certificate or public key hash, not leaf certificate.
+        </implementation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Enable OCSP stapling for certificate revocation checking</rule>
+        <rationale>
+          Improves performance and privacy while maintaining revocation checking.
+        </rationale>
+        <implementation>
+          <good>
+            # nginx OCSP stapling
+            ssl_stapling on;
+            ssl_stapling_verify on;
+            ssl_trusted_certificate /path/to/chain.pem;
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="medium">
+        <rule>Use separate certificates for different services/domains</rule>
+        <rationale>
+          Limits blast radius if a certificate is compromised.
+          Enables independent rotation schedules.
+        </rationale>
+      </practice>
+    </category>
+
+    <category name="mtls_specific">
+      <practice priority="critical">
+        <rule>Always verify client certificates in mTLS configurations</rule>
+        <rationale>
+          mTLS provides mutual authentication. Failing to verify client
+          certificates defeats the purpose.
+        </rationale>
+        <implementation>
+          <good>
+            # nginx mTLS configuration
+            ssl_client_certificate /path/to/ca.crt;
+            ssl_verify_client on;
+            ssl_verify_depth 2;
+          </good>
+          <bad>
+            # Optional verification is not mTLS
+            ssl_verify_client optional;
+          </bad>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Implement proper certificate revocation checking (CRL or OCSP)</rule>
+        <rationale>
+          Client certificates may be compromised or revoked. Must check
+          revocation status before accepting.
+        </rationale>
+        <implementation>
+          <good>
+            # nginx CRL checking
+            ssl_crl /path/to/crl.pem;
+            
+            # Or OCSP checking
+            ssl_verify_client on;
+            ssl_ocsp on;
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Use separate CA for client certificates vs server certificates</rule>
+        <rationale>
+          Separation of concerns. Compromised client CA doesn't affect
+          server certificate trust.
+        </rationale>
+      </practice>
+
+      <practice priority="high">
+        <rule>Implement certificate-based authorization, not just authentication</rule>
+        <rationale>
+          Verify not just that the certificate is valid, but that the
+          certificate holder is authorized for the requested operation.
+        </rationale>
+        <implementation>
+          Extract certificate subject DN or SAN and map to authorization policies.
+        </implementation>
+      </practice>
+    </category>
+
+    <category name="security_headers">
+      <practice priority="critical">
+        <rule>Enable HTTP Strict Transport Security (HSTS)</rule>
+        <rationale>
+          Forces browsers to use HTTPS, preventing protocol downgrade attacks.
+        </rationale>
+        <implementation>
+          <good>
+            # nginx HSTS header
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+          </good>
+        </implementation>
+        <hsts_requirements>
+          <requirement>max-age of at least 1 year (31536000 seconds)</requirement>
+          <requirement>includeSubDomains for comprehensive protection</requirement>
+          <requirement>Consider HSTS preload list submission</requirement>
+        </hsts_requirements>
+      </practice>
+
+      <practice priority="high">
+        <rule>Disable TLS compression to prevent CRIME attacks</rule>
+        <rationale>
+          TLS compression can leak information through compression ratio analysis.
+        </rationale>
+        <implementation>
+          <good>
+            # nginx - compression disabled by default
+            ssl_compression off;
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Disable TLS session tickets for high-security environments</rule>
+        <rationale>
+          Session tickets can compromise Perfect Forward Secrecy if not
+          properly managed.
+        </rationale>
+        <implementation>
+          <good>
+            # nginx
+            ssl_session_tickets off;
+          </good>
+        </implementation>
+        <exceptions>
+          Session tickets acceptable if keys are rotated frequently and
+          securely distributed across load balancers.
+        </exceptions>
+      </practice>
+    </category>
+  </tls_mtls_best_practices>
+
+  <oauth_best_practices>
+    <category name="authorization_flows">
+      <practice priority="critical">
+        <rule>Use Authorization Code flow with PKCE for all client types</rule>
+        <rationale>
+          PKCE (Proof Key for Code Exchange) prevents authorization code
+          interception attacks. Required for public clients, recommended for all.
+        </rationale>
+        <implementation>
+          <good>
+            // Spring Security OAuth2 with PKCE
+            http.oauth2Login()
+                .authorizationEndpoint()
+                .authorizationRequestResolver(
+                    pkceAuthorizationRequestResolver()
+                );
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Never use Implicit flow or Resource Owner Password Credentials flow</rule>
+        <rationale>
+          These flows are deprecated due to security vulnerabilities.
+          OAuth 2.1 removes them entirely.
+        </rationale>
+        <prohibited_flows>
+          <flow>Implicit flow (response_type=token)</flow>
+          <flow>Resource Owner Password Credentials (grant_type=password)</flow>
+        </prohibited_flows>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Always validate the state parameter to prevent CSRF</rule>
+        <rationale>
+          State parameter prevents cross-site request forgery attacks on
+          the OAuth callback.
+        </rationale>
+        <implementation>
+          Generate cryptographically random state value, store in session,
+          validate on callback.
+        </implementation>
+      </practice>
+    </category>
+
+    <category name="redirect_uri_validation">
+      <practice priority="critical">
+        <rule>Use exact string matching for redirect URI validation</rule>
+        <rationale>
+          Loose matching (substring, regex) can be exploited for open redirects.
+        </rationale>
+        <implementation>
+          <good>
+            // Exact match only
+            if (redirectUri.equals(registeredRedirectUri)) {
+                // Allow
+            }
+          </good>
+          <bad>
+            // Dangerous - allows subdomain takeover
+            if (redirectUri.startsWith(registeredRedirectUri)) {
+                // Allow
+            }
+          </bad>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Never allow wildcard or dynamic redirect URIs</rule>
+        <rationale>
+          Wildcards enable attackers to redirect to malicious sites.
+        </rationale>
+        <prohibited>
+          <pattern>https://*.example.com/callback</pattern>
+          <pattern>https://example.com/*/callback</pattern>
+          <pattern>User-provided redirect_uri without pre-registration</pattern>
+        </prohibited>
+      </practice>
+
+      <practice priority="high">
+        <rule>Use HTTPS for all redirect URIs in production</rule>
+        <rationale>
+          HTTP redirect URIs expose authorization codes to network attackers.
+        </rationale>
+        <exceptions>
+          localhost HTTP allowed only for development/testing.
+        </exceptions>
+      </practice>
+    </category>
+
+    <category name="token_management">
+      <practice priority="critical">
+        <rule>Use short-lived access tokens (15 minutes or less)</rule>
+        <rationale>
+          Limits exposure window if token is compromised.
+        </rationale>
+        <implementation>
+          <good>
+            // Spring Security OAuth2
+            @Bean
+            public TokenSettings tokenSettings() {
+                return TokenSettings.builder()
+                    .accessTokenTimeToLive(Duration.ofMinutes(15))
+                    .build();
+            }
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Implement refresh token rotation</rule>
+        <rationale>
+          Detects token theft. If old refresh token is used after rotation,
+          revoke all tokens for that user.
+        </rationale>
+        <implementation>
+          Issue new refresh token with each refresh request, invalidate old one.
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Store tokens securely - never in localStorage</rule>
+        <rationale>
+          localStorage is accessible to JavaScript, vulnerable to XSS.
+        </rationale>
+        <secure_storage>
+          <option>HttpOnly, Secure cookies (best for web apps)</option>
+          <option>Secure device storage (iOS Keychain, Android Keystore)</option>
+          <option>Memory only (for SPAs, with refresh token in HttpOnly cookie)</option>
+        </secure_storage>
+      </practice>
+
+      <practice priority="high">
+        <rule>Implement token introspection for resource servers</rule>
+        <rationale>
+          Validates token is still active and not revoked.
+        </rationale>
+        <implementation>
+          Resource servers should call token introspection endpoint or
+          validate JWT signature and claims.
+        </implementation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Use opaque tokens for access tokens, JWTs for ID tokens</rule>
+        <rationale>
+          Opaque tokens prevent information disclosure and enable centralized
+          revocation. JWTs appropriate for ID tokens with signature validation.
+        </rationale>
+      </practice>
+    </category>
+
+    <category name="scope_and_authorization">
+      <practice priority="critical">
+        <rule>Implement principle of least privilege for scopes</rule>
+        <rationale>
+          Grant only the minimum scopes necessary for the application's function.
+        </rationale>
+        <implementation>
+          Define granular scopes (read:account, write:transactions) rather
+          than broad scopes (admin, full_access).
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Validate scopes on every API request</rule>
+        <rationale>
+          Token may have been issued with broader scopes than endpoint requires.
+          Always verify.
+        </rationale>
+        <implementation>
+          <good>
+            @PreAuthorize("hasAuthority('SCOPE_read:accounts')")
+            public Account getAccount(String id) {
+                // Implementation
+            }
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Implement consent screens for sensitive scopes</rule>
+        <rationale>
+          Users must explicitly approve access to sensitive data.
+        </rationale>
+        <sensitive_scopes>
+          <scope>Financial transaction access</scope>
+          <scope>Personal identification information</scope>
+          <scope>Account modification capabilities</scope>
+        </sensitive_scopes>
+      </practice>
+    </category>
+
+    <category name="client_authentication">
+      <practice priority="critical">
+        <rule>Use client_secret_post or client_secret_jwt for confidential clients</rule>
+        <rationale>
+          More secure than client_secret_basic (HTTP Basic Auth).
+        </rationale>
+        <implementation>
+          <good>
+            // Client secret in POST body
+            POST /token
+            Content-Type: application/x-www-form-urlencoded
+            
+            grant_type=authorization_code&
+            code=...&
+            client_id=...&
+            client_secret=...
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Rotate client secrets regularly (every 90 days)</rule>
+        <rationale>
+          Limits exposure window if secret is compromised.
+        </rationale>
+        <automation>
+          Implement automated secret rotation with overlap period for
+          zero-downtime updates.
+        </automation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Use private_key_jwt for high-security clients</rule>
+        <rationale>
+          Asymmetric authentication is more secure than shared secrets.
+        </rationale>
+        <implementation>
+          Client signs JWT with private key, authorization server validates
+          with public key.
+        </implementation>
+      </practice>
+    </category>
+  </oauth_best_practices>
+
+  <cryptographic_best_practices>
+    <category name="algorithm_selection">
+      <practice priority="critical">
+        <rule>Use SHA-256 or SHA-384 for hashing, never MD5 or SHA-1</rule>
+        <rationale>
+          MD5 and SHA-1 have known collision vulnerabilities.
+        </rationale>
+        <approved_algorithms>
+          <algorithm>SHA-256 (minimum)</algorithm>
+          <algorithm>SHA-384 (recommended)</algorithm>
+          <algorithm>SHA-512 (high security)</algorithm>
+          <algorithm>SHA-3 family (future-proof)</algorithm>
+        </approved_algorithms>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Use AES-256-GCM for symmetric encryption</rule>
+        <rationale>
+          AES-256 with GCM mode provides both confidentiality and integrity.
+        </rationale>
+        <implementation>
+          <good>
+            // Java example
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+          </good>
+          <bad>
+            // Weak - ECB mode, no authentication
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+          </bad>
+        </implementation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Plan for post-quantum cryptography migration</rule>
+        <rationale>
+          Quantum computers will break current public-key cryptography.
+          Start planning now for long-term data protection.
+        </rationale>
+        <migration_steps>
+          <step>Inventory all cryptographic usage (use IBM Quantum Safe Explorer)</step>
+          <step>Identify data with long-term confidentiality requirements</step>
+          <step>Evaluate NIST post-quantum algorithm candidates</step>
+          <step>Plan hybrid classical/post-quantum approach</step>
+          <step>Implement crypto-agility for algorithm updates</step>
+        </migration_steps>
+      </practice>
+    </category>
+
+    <category name="key_management">
+      <practice priority="critical">
+        <rule>Never hardcode cryptographic keys or secrets in code</rule>
+        <rationale>
+          Hardcoded secrets are easily discovered and cannot be rotated.
+        </rationale>
+        <secure_alternatives>
+          <alternative>Environment variables (minimum)</alternative>
+          <alternative>Secrets management service (HashiCorp Vault, AWS Secrets Manager)</alternative>
+          <alternative>Hardware Security Module (HSM) for critical keys</alternative>
+        </secure_alternatives>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Implement key rotation policies</rule>
+        <rationale>
+          Regular rotation limits exposure if key is compromised.
+        </rationale>
+        <rotation_schedule>
+          <key_type>Symmetric encryption keys: Every 90 days</key_type>
+          <key_type>API keys: Every 90 days</key_type>
+          <key_type>TLS private keys: Every 1-2 years (with certificate)</key_type>
+          <key_type>Signing keys: Every 1 year</key_type>
+        </rotation_schedule>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Use separate keys for different purposes</rule>
+        <rationale>
+          Key separation limits blast radius and enables independent rotation.
+        </rationale>
+        <separation_examples>
+          <example>Separate keys for encryption vs signing</example>
+          <example>Separate keys per environment (dev, staging, prod)</example>
+          <example>Separate keys per data classification level</example>
+        </separation_examples>
+      </practice>
+
+      <practice priority="high">
+        <rule>Implement secure key generation with sufficient entropy</rule>
+        <rationale>
+          Weak random number generation leads to predictable keys.
+        </rationale>
+        <implementation>
+          <good>
+            // Java - use SecureRandom
+            SecureRandom random = SecureRandom.getInstanceStrong();
+            byte[] key = new byte[32];
+            random.nextBytes(key);
+          </good>
+          <bad>
+            // Weak - predictable
+            Random random = new Random();
+            byte[] key = new byte[32];
+            random.nextBytes(key);
+          </bad>
+        </implementation>
+      </practice>
+    </category>
+
+    <category name="password_handling">
+      <practice priority="critical">
+        <rule>Use bcrypt, scrypt, or Argon2 for password hashing</rule>
+        <rationale>
+          These algorithms are designed for password hashing with built-in
+          salting and computational cost.
+        </rationale>
+        <implementation>
+          <good>
+            // Spring Security - bcrypt
+            PasswordEncoder encoder = new BCryptPasswordEncoder(12);
+          </good>
+          <bad>
+            // Weak - fast hash, no salt
+            String hash = DigestUtils.sha256Hex(password);
+          </bad>
+        </implementation>
+      </practice>
+
+      <practice priority="critical">
+        <rule>Never log, display, or transmit passwords in plaintext</rule>
+        <rationale>
+          Passwords must be protected at all times.
+        </rationale>
+        <protection_measures>
+          <measure>Hash immediately upon receipt</measure>
+          <measure>Use TLS for transmission</measure>
+          <measure>Redact from logs and error messages</measure>
+          <measure>Clear from memory after use</measure>
+        </protection_measures>
+      </practice>
+    </category>
+  </cryptographic_best_practices>
+
+  <framework_abstraction_best_practices>
+    <category name="spring_boot_security">
+      <practice priority="high">
+        <rule>Explicitly configure security rather than relying on auto-configuration</rule>
+        <rationale>
+          Auto-configuration may have insecure defaults or unexpected behavior.
+        </rationale>
+        <implementation>
+          <good>
+            @Configuration
+            @EnableWebSecurity
+            public class SecurityConfig {
+                @Bean
+                public SecurityFilterChain filterChain(HttpSecurity http) {
+                    http
+                        .requiresChannel(channel -> channel
+                            .anyRequest().requiresSecure())
+                        .oauth2Login(oauth2 -> oauth2
+                            .authorizationEndpoint(authorization -> authorization
+                                .authorizationRequestResolver(pkceResolver())));
+                    return http.build();
+                }
+            }
+          </good>
+        </implementation>
+      </practice>
+
+      <practice priority="high">
+        <rule>Validate SSL bundle configurations explicitly</rule>
+        <rationale>
+          Spring Boot SSL bundles abstract TLS configuration. Must verify
+          actual settings match requirements.
+        </rationale>
+        <validation_steps>
+          <step>Review application.properties/yaml for ssl.bundle definitions</step>
+          <step>Verify certificate paths and key stores</step>
+          <step>Confirm protocol versions and cipher suites</step>
+          <step>Test with runtime validation tools</step>
+        </validation_steps>
+      </practice>
+    </category>
+
+    <category name="infrastructure_as_code">
+      <practice priority="high">
+        <rule>Validate templated configurations before deployment</rule>
+        <rationale>
+          Ansible/Terraform templates may resolve to insecure values.
+        </rationale>
+        <validation_approach>
+          <step>Render templates with actual variable values</step>
+          <step>Scan rendered output for security issues</step>
+          <step>Verify against security baseline</step>
+          <step>Block deployment if validation fails</step>
+        </validation_approach>
+      </practice>
+
+      <practice priority="high">
+        <rule>Use immutable infrastructure patterns</rule>
+        <rationale>
+          Prevents configuration drift and ensures consistency.
+        </rationale>
+        <implementation>
+          Build complete images/containers with configuration baked in.
+          Replace rather than update in place.
+        </implementation>
+      </practice>
+    </category>
+  </framework_abstraction_best_practices>
+
+  <common_pitfalls>
+    <pitfall name="assuming_framework_defaults_are_secure">
+      <description>
+        Frameworks prioritize ease of use over security. Default configurations
+        often allow weak protocols or ciphers for compatibility.
+      </description>
+      <impact>Production systems may have insecure TLS configurations</impact>
+      <prevention>
+        Always explicitly configure security settings. Never rely on defaults.
+        Validate with runtime testing.
+      </prevention>
+    </pitfall>
+
+    <pitfall name="incomplete_certificate_validation">
+      <description>
+        Disabling certificate validation for testing and forgetting to re-enable.
+      </description>
+      <impact>Man-in-the-middle attacks possible</impact>
+      <prevention>
+        Use separate configuration for dev/test/prod. Never disable validation
+        in production. Use feature flags with strict controls.
+      </prevention>
+    </pitfall>
+
+    <pitfall name="oauth_redirect_uri_validation_bypass">
+      <description>
+        Using loose matching (startsWith, contains) for redirect URI validation.
+      </description>
+      <impact>Open redirect vulnerability, authorization code theft</impact>
+      <prevention>
+        Use exact string matching only. Pre-register all redirect URIs.
+      </prevention>
+    </pitfall>
+
+    <pitfall name="token_storage_in_localstorage">
+      <description>
+        Storing OAuth tokens in browser localStorage.
+      </description>
+      <impact>Tokens accessible to XSS attacks</impact>
+      <prevention>
+        Use HttpOnly, Secure cookies or memory-only storage with refresh
+        token in HttpOnly cookie.
+      </prevention>
+    </pitfall>
+
+    <pitfall name="missing_runtime_validation">
+      <description>
+        Assuming deployment configuration matches intent without testing.
+      </description>
+      <impact>Insecure configurations in production</impact>
+      <prevention>
+        Always perform runtime validation with testssl.sh, SSLyze, or
+        similar tools after deployment.
+      </prevention>
+    </pitfall>
+
+    <pitfall name="certificate_expiration_surprises">
+      <description>
+        Not monitoring certificate expiration dates.
+      </description>
+      <impact>Service outages when certificates expire</impact>
+      <prevention>
+        Implement automated monitoring with alerts 30+ days before expiration.
+        Automate renewal process.
+      </prevention>
+    </pitfall>
+  </common_pitfalls>
+
+  <quality_checklist>
+    <category name="before_implementation">
+      <item>Review security requirements and compliance obligations</item>
+      <item>Identify all TLS/mTLS endpoints and OAuth flows</item>
+      <item>Document approved algorithms, protocols, and configurations</item>
+      <item>Plan certificate management and rotation strategy</item>
+    </category>
+
+    <category name="during_implementation">
+      <item>Use approved cryptographic libraries and algorithms</item>
+      <item>Explicitly configure security settings (no defaults)</item>
+      <item>Implement proper error handling without information disclosure</item>
+      <item>Add security-focused logging for audit trail</item>
+      <item>Document security decisions and trade-offs</item>
+    </category>
+
+    <category name="before_deployment">
+      <item>Run static analysis and IaC security scans</item>
+      <item>Perform cryptographic visibility analysis</item>
+      <item>Validate resolved configurations</item>
+      <item>Review and approve security findings</item>
+    </category>
+
+    <category name="after_deployment">
+      <item>Perform runtime TLS/mTLS validation</item>
+      <item>Test OAuth flows with security scanner</item>
+      <item>Verify certificate chains and validity</item>
+      <item>Confirm monitoring and alerting is active</item>
+      <item>Generate compliance evidence package</item>
+    </category>
+
+    <category name="ongoing">
+      <item>Monitor for configuration drift</item>
+      <item>Track certificate expiration dates</item>
+      <item>Review cryptographic posture regularly</item>
+      <item>Update security controls as threats evolve</item>
+      <item>Maintain audit trail of all changes</item>
+    </category>
+  </quality_checklist>
+</devsecops_best_practices>
