@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **DevSecOps Security Mode** is a specialized Bob mode designed for implementing and validating security controls in regulated banking environments. It provides comprehensive security assurance through a 5-stage control model that addresses TLS/mTLS configuration, OAuth 2.0 security, cryptographic analysis, and continuous compliance monitoring.
+The **DevSecOps Security Mode** for use in IBM Bob is a specialized Bob mode designed for implementing and validating security controls in regulated banking environments. It provides comprehensive security assurance through a 5-stage control model that addresses TLS/mTLS configuration, OAuth 2.0 security, cryptographic analysis, and continuous compliance monitoring.
 
 ### Key Capabilities
 
@@ -58,7 +58,7 @@ The **DevSecOps Security Mode** is a specialized Bob mode designed for implement
 - Permissions to install security scanning tools
 - Access to certificate management systems
 - Network access to scan target endpoints
-- (Optional) IBM Quantum Safe Explorer license for cryptographic analysis
+- IBM Quantum Safe Explorer license for cryptographic analysis
 
 ### Environment Setup
 
@@ -634,6 +634,14 @@ https://admin.example.com
 ### Activating DevSecOps Security Mode
 
 The mode is automatically available in Bob once the `.bobmodes` file is present in your project.
+
+Download the mode files from Github
+
+``` gh repo clone ncee-dp-tech-sme/IBM-Bob-DevSecOps-Security-Mode ```
+
+Or
+
+``` https://github.com/ncee-dp-tech-sme/IBM-Bob-DevSecOps-Security-Mode/archive/refs/heads/main.zip ```
 
 **To activate:**
 1. Open Bob in your project
