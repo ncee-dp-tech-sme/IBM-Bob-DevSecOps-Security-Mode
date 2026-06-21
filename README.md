@@ -34,6 +34,7 @@ The **DevSecOps Security Mode** for use in IBM Bob is a specialized Bob mode des
   - [Cryptographic Analysis Tools](#cryptographic-analysis-tools)
   - [Runtime Validation Tools](#runtime-validation-tools)
   - [Secrets Detection Tools](#secrets-detection-tools)
+- [Running Tools in a Container](#running-tools-in-a-container)
 - [Configuration](#configuration)
 - [Mode Activation](#mode-activation)
 - [Usage Examples](#usage-examples)
@@ -107,9 +108,9 @@ pip install semgrep
 brew install semgrep
 ```
 
-**Installation via Docker:**
+**Installation via Podman:**
 ```bash
-docker pull returntocorp/semgrep
+podman pull returntocorp/semgrep
 ```
 
 **Verification:**
@@ -137,9 +138,9 @@ pip install checkov
 brew install checkov
 ```
 
-**Installation via Docker:**
+**Installation via Podman:**
 ```bash
-docker pull bridgecrew/checkov
+podman pull bridgecrew/checkov
 ```
 
 **Verification:**
@@ -153,21 +154,93 @@ checkov --version
 
 KICS provides comprehensive IaC security scanning.
 
-**Installation via Docker:**
-```bash
-docker pull checkmarx/kics:latest
+##### Installation
+
+There are multiple ways to get KICS up and running:
+
+###### Podman
+
+KICS is available as a [container image](https://hub.docker.com/r/checkmarx/kics) with multiple variants to fit different use cases.
+
+To scan a directory/file on your host, mount it as a volume to the container and specify the path on the container filesystem with the `-p` KICS parameter (see Scan Command Options section below).
+
+**Quick Start:**
+```shell
+podman pull checkmarx/kics:latest
+podman run -t -v "{path_to_host_folder_to_scan}":/path checkmarx/kics scan -p /path -o "/path/"
 ```
 
-**Installation via Binary (Linux/macOS):**
-```bash
-# Download latest release
-curl -sfL 'https://raw.githubusercontent.com/Checkmarx/kics/master/install.sh' | bash
+**Available Image Variants:**
 
-# Move to PATH
-sudo mv ./bin/kics /usr/local/bin/kics
+| Tag | Base OS | Package Manager | Use Case |
+|-----|---------|----------------|----------|
+| `latest`, `v{VERSION}` | Wolfi Linux | None | Default, lightweight image |
+| `alpine`, `v{VERSION}-alpine` | Alpine Linux | `apk` | When you need `apk` package manager |
+| `debian`, `v{VERSION}-debian` | Debian | `apt-get` | When you need `apt-get` package manager |
+| `ubi8`, `v{VERSION}-ubi8` | Red Hat UBI8 | `yum` | Enterprise environments, Red Hat compatible |
+
+You can see the list of available tags on [Docker Hub](https://hub.docker.com/r/checkmarx/kics/tags?page=1&ordering=-name).
+
+**Choosing the Right Image:**
+
+- **For most users**: Use `latest` (default, smallest size)
+- **If you need to install additional packages**: Choose based on your preferred package manager:
+  - `alpine` for `apk add` commands
+  - `debian` for `apt-get install` commands
+  - `ubi8` for `yum install` commands in enterprise environments
+
+> ℹ️ **UBI Based Images**
+>
+> When using [UBI8](https://catalog.redhat.com) based image, the KICS process will run under the `kics` user and `kics` group with default UID=1000 and GID=1000. When using bind mount to share host files with the container, the UID and GID can be overridden to match the current user with the `-u` flag:
+>
+> ```shell
+> podman run -it -u $UID:$GID -v $PWD:/path checkmarx/kics:ubi8 scan -p /path/assets/queries/dockerfile -o /path -v
+> ```
+>
+> Another option is [rebuilding the Dockerfile](https://github.com/Checkmarx/kics/blob/master/docker/Dockerfile.ubi8) providing build arguments, e.g: `--build-arg UID=999 --build-arg GID=999 --build-arg KUSER=myuser --build-arg KGROUP=mygroup`
+
+###### Build from Sources
+
+1. Download and install Go 1.16 (1.22 recommended) or higher from [https://golang.org/dl/](https://golang.org/dl/).
+2. Clone the repository:
+    ```sh
+    git clone https://github.com/Checkmarx/kics.git
+    ```
+3. Build the binaries:
+    ```sh
+    cd kics
+    go mod vendor
+    make build
+    ```
+
+    or
+
+    ```sh
+    cd kics
+    go mod vendor
+    # Linux/macOS:
+    go build -o ./bin/kics cmd/console/main.go
+    # Windows (create the bin folder first):
+    go build -o ./bin/kics.exe cmd/console/main.go
+    ```
+4. Kick a scan!
+    ```sh
+    ./bin/kics scan -p '<path-of-your-project-to-scan>' --report-formats json -o ./results
+    ```
+
+##### Scan Examples
+
+**Scan a directory:**
+```shell
+podman run -t -v {path_to_host_folder_to_scan}:/path checkmarx/kics:latest scan -p /path -o "/path/"
 ```
 
-**Verification:**
+**Scan a single file:**
+```shell
+podman run -t -v {path_to_host_folder}:/path checkmarx/kics:latest scan -p /path/{filename}.{extension} -o "/path/"
+```
+
+**Verification if installed locally:**
 ```bash
 kics version
 ```
@@ -343,15 +416,20 @@ echo "Scan complete for $PROJECT_NAME"
 
 Comprehensive TLS/SSL testing tool for endpoint validation.
 
+**Installation via Homebrew (macOS):**
+```bash
+brew install testssl
+```
+
 **Installation via Git:**
 ```bash
 git clone --depth 1 https://github.com/drwetter/testssl.sh.git
 cd testssl.sh
 ```
 
-**Installation via Docker:**
+**Installation via Podman:**
 ```bash
-docker pull drwetter/testssl.sh
+podman pull drwetter/testssl.sh
 ```
 
 **Verification:**
@@ -411,21 +489,21 @@ Dynamic Application Security Testing tool with OAuth support.
 
 Download from [https://www.zaproxy.org/download/](https://www.zaproxy.org/download/)
 
-**Installation via Docker:**
+**Installation via Podman:**
 ```bash
-docker pull owasp/zap2docker-stable
+podman pull owasp/zap2docker-stable
 ```
 
 **Basic Usage:**
 ```bash
 # Baseline scan
-docker run -t owasp/zap2docker-stable zap-baseline.py -t https://api.example.com
+podman run -t owasp/zap2docker-stable zap-baseline.py -t https://api.example.com
 
 # Full scan
-docker run -t owasp/zap2docker-stable zap-full-scan.py -t https://api.example.com
+podman run -t owasp/zap2docker-stable zap-full-scan.py -t https://api.example.com
 
 # API scan
-docker run -t owasp/zap2docker-stable zap-api-scan.py -t https://api.example.com/openapi.json
+podman run -t owasp/zap2docker-stable zap-api-scan.py -t https://api.example.com/openapi.json
 ```
 
 ---
@@ -441,9 +519,9 @@ Scans for accidentally committed secrets and credentials.
 pip install truffleHog
 ```
 
-**Installation via Docker:**
+**Installation via Podman:**
 ```bash
-docker pull trufflesecurity/trufflehog
+podman pull trufflesecurity/trufflehog
 ```
 
 **Verification:**
@@ -509,6 +587,110 @@ detect-secrets scan > .secrets.baseline
 
 # Audit findings
 detect-secrets audit .secrets.baseline
+```
+
+---
+
+## Running Tools in a Container
+
+All tools can be run inside a single Podman container — **no local installs required beyond Podman itself**. This is the recommended approach for clean, reproducible scans on any machine.
+
+> For the full container reference see [CONTAINER.md](CONTAINER.md).
+
+### What's included in the container image
+
+| Tool | Purpose |
+|------|---------|
+| `semgrep` | Static analysis — security pattern detection |
+| `checkov` | IaC scanner — Terraform, Ansible, Kubernetes |
+| `kics` | IaC scanner — multi-framework (Checkmarx) |
+| `tfsec` | Terraform-specific security scanner |
+| `sslyze` | TLS/SSL certificate analyser |
+| `testssl.sh` | TLS/SSL endpoint protocol and cipher tester |
+| `trufflehog` | Secrets detection in git repos and filesystems |
+| `detect-secrets` | Pre-commit secrets baseline management |
+| `git-secrets` | Git hook-based secret leak prevention |
+
+> **IBM Quantum Safe Explorer** and **OWASP ZAP** require their own runtimes and cannot be bundled in this image. See their individual sections above for install instructions.
+
+### Prerequisites
+
+Install and start Podman — nothing else is needed.
+
+**macOS:**
+```bash
+brew install podman
+podman machine init
+podman machine start
+```
+
+**Linux:** See [https://podman.io/getting-started/installation](https://podman.io/getting-started/installation)
+
+### Quick start
+
+```bash
+# Make scripts executable (once)
+chmod +x scan.sh entrypoint.sh
+
+# Build the image (once, or after updates)
+./scan.sh --build
+
+# Run any tool
+./scan.sh semgrep --config auto .
+./scan.sh checkov -d .
+./scan.sh testssl https://api.example.com
+./scan.sh trufflehog filesystem .
+```
+
+### How it works
+
+- Your **current working directory** is automatically mounted into the container as `/scan/project`
+- A `scan-results/` directory is created in your current directory and mounted as `/scan/results`
+- Pass paths relative to your current directory — they are transparently rewritten for the container
+
+```
+Host path                     →  Container path
+./my-project/                 →  /scan/project/
+./scan-results/               →  /scan/results/
+```
+
+### Scan examples
+
+```bash
+# Semgrep — static analysis with auto-detected rules
+./scan.sh semgrep --config auto .
+
+# Checkov — scan all IaC in current directory, JSON report
+./scan.sh checkov -d . -o json --output-file-path scan-results/
+
+# KICS — IaC scan with JSON output
+./scan.sh kics scan -p . --report-formats json -o scan-results/
+
+# tfsec — Terraform scan, HIGH and above only
+./scan.sh tfsec . --minimum-severity HIGH
+
+# testssl.sh — full TLS scan with JSON output
+./scan.sh testssl --jsonfile scan-results/testssl.json https://api.example.com
+
+# SSLyze — certificate and TLS configuration analysis
+./scan.sh sslyze --certinfo --json_out=scan-results/sslyze.json api.example.com:443
+
+# TruffleHog — scan local filesystem for secrets
+./scan.sh trufflehog filesystem . --json > scan-results/trufflehog.json
+
+# detect-secrets — create a secrets baseline for pre-commit use
+./scan.sh detect-secrets scan . > .secrets.baseline
+```
+
+### Rebuilding the image
+
+Rebuild to pick up updated tool versions or after modifying the `Containerfile`:
+
+```bash
+./scan.sh --build
+
+# Force clean rebuild (no layer cache)
+podman build --no-cache -t devsecops-tools -f Containerfile .
 ```
 
 ---
@@ -907,7 +1089,7 @@ jobs:
       
       - name: Run OWASP ZAP
         run: |
-          docker run -t owasp/zap2docker-stable \
+          podman run -t owasp/zap2docker-stable \
             zap-baseline.py -t https://api.example.com
 
   stage5-continuous-monitoring:

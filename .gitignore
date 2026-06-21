@@ -1,0 +1,11 @@
+# Scan output — generated at runtime, not committed
+scan-results/
+
+# Python virtual environment
+.venv-devsecops/
+
+# testssl.sh cloned locally on Linux
+testssl.sh/
+
+# git-secrets cloned locally on Linux
+git-secrets/
